@@ -89,3 +89,7 @@ data/norm/
 data/_to_delete/
 data/cache/
 *.tmp
+data/models/
+data/preds/
+data/feats/
+data/*_old/
