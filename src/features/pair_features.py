@@ -58,18 +58,20 @@ def to_pair_ids(p: pd.DataFrame) -> pd.DataFrame:
 # ----------------------------------------------------------------------------- records
 def gather_records(split: str, ids: Iterable[str]) -> pd.DataFrame:
     """Normalised records for the given entity ids, indexed by entity_id.
-    Streams part files so it never holds a whole 5M-row source in memory."""
-    need = pd.Index(pd.unique(pd.Series(list(ids), dtype=object)))
-    sources = sorted({int(i[1]) for i in need})
+    The id filter runs inside pyarrow while scanning, so only the needed rows are ever
+    converted to pandas (the old per-part pandas filter took ~11 min for 1.4M records)."""
+    import pyarrow as pa
+    import pyarrow.dataset as pads
+    need = pd.unique(pd.Series(list(ids), dtype=object))
+    value_set = pa.array(need, type=pa.string())
     parts = []
-    for s in sources:
-        for f in sorted(norm_path(split, s).glob("part-*.parquet")):
-            t = pd.read_parquet(f, columns=REC_COLS)
-            t = t[t.entity_id.isin(need)]
-            if len(t):
-                parts.append(t)
+    for s in sorted({int(i[1]) for i in need}):
+        dset = pads.dataset(str(norm_path(split, s)), format="parquet")   # ignores _SUCCESS
+        tbl = dset.to_table(columns=REC_COLS, filter=pads.field("entity_id").isin(value_set))
+        if tbl.num_rows:
+            parts.append(tbl.to_pandas())
     rec = pd.concat(parts, ignore_index=True).drop_duplicates("entity_id").set_index("entity_id")
-    missing = need.difference(rec.index)
+    missing = pd.Index(need).difference(rec.index)
     if len(missing):
         raise ValueError(f"{len(missing)} ids not found in data/norm/{split}_*, e.g. {list(missing[:3])}")
     return rec
@@ -206,16 +208,38 @@ def add_context_features(df: pd.DataFrame,
     return df
 
 
-def build(split: str, pairs: pd.DataFrame, chunk: int = 500_000, context: bool = True) -> pd.DataFrame:
+def _task(args):
+    """Worker entry point (top-level so Windows 'spawn' workers can import it)."""
+    part, sub = args
+    return pd.concat([part, compute_features(part, sub).reset_index(drop=True)], axis=1)
+
+
+def build(split: str, pairs: pd.DataFrame, chunk: int = 250_000, context: bool = True,
+          workers: int = 4) -> pd.DataFrame:
+    """Features for all pairs. Chunks are processed in parallel; each worker only receives the
+    records its chunk needs. Tasks are sent in small batches to keep memory flat."""
+    from multiprocessing import get_context
     t0 = time.time()
     rec = gather_records(split, pd.concat([pairs.s1_id, pairs.cand_id]).unique())
     print(f"  gathered {len(rec):,} records in {time.time()-t0:.0f}s", flush=True)
+
+    def job(i):
+        part = pairs.iloc[i:i + chunk].reset_index(drop=True)
+        ids = pd.unique(np.concatenate([part.s1_id.values, part.cand_id.values]))
+        return part, rec.loc[ids]
+
+    starts = list(range(0, len(pairs), chunk))
     out = []
-    for i in range(0, len(pairs), chunk):
-        part = pairs.iloc[i:i + chunk]
-        out.append(pd.concat([part.reset_index(drop=True),
-                              compute_features(part, rec).reset_index(drop=True)], axis=1))
-        print(f"  features {min(i + chunk, len(pairs)):,}/{len(pairs):,}  {time.time()-t0:.0f}s", flush=True)
+    if workers > 1 and len(starts) > 1:
+        with get_context("spawn").Pool(workers) as pool:
+            for b in range(0, len(starts), workers * 2):
+                out += pool.map(_task, [job(i) for i in starts[b:b + workers * 2]])
+                print(f"  features {min(starts[min(b + workers * 2, len(starts)) - 1] + chunk, len(pairs)):,}"
+                      f"/{len(pairs):,}  {time.time()-t0:.0f}s", flush=True)
+    else:
+        for i in starts:
+            out.append(_task(job(i)))
+            print(f"  features {min(i + chunk, len(pairs)):,}/{len(pairs):,}  {time.time()-t0:.0f}s", flush=True)
     df = pd.concat(out, ignore_index=True)
     return add_context_features(df) if context else df
 
@@ -229,6 +253,7 @@ if __name__ == "__main__":
     ap.add_argument("--s1-ids", help="csv with column s1_id: only build features for these S1 (e.g. dev)")
     ap.add_argument("--out", help="default: data/feats/{split}[_subset].parquet")
     ap.add_argument("--no-context", action="store_true")
+    ap.add_argument("--workers", type=int, default=4)
     a = ap.parse_args()
     src = a.pairs or WORK_DIR / "cache" / f"candidate_pairs_{a.split}.parquet"
     p = to_pair_ids(pd.read_parquet(src))
@@ -237,6 +262,6 @@ if __name__ == "__main__":
         p = p[p.s1_id.isin(keep)].reset_index(drop=True)
     out = a.out or WORK_DIR / "feats" / f"{a.split}{'_subset' if a.s1_ids else ''}.parquet"
     print(f"{len(p):,} pairs for {p.s1_id.nunique():,} S1 from {src}", flush=True)
-    feats = build(a.split, p, context=not a.no_context)
+    feats = build(a.split, p, context=not a.no_context, workers=a.workers)
     save_parquet_atomic(feats, out)
     print(f"wrote {out}: {len(feats):,} rows x {feats.shape[1]} cols")

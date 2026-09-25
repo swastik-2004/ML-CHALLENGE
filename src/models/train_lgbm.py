@@ -1,5 +1,6 @@
 """
-LightGBM matcher + per-S1 decision layer, scored with macro F0.5 on the dev S1 set.
+LightGBM matcher (model owner) + tuning of the decision layer (src/models/decision.py, P1),
+scored with macro F0.5 on the dev S1 set.
 
 1. Label each candidate pair from the ground truth.
 2. Out-of-fold (OOF) probabilities: train on 4 fold-groups, predict the 5th (folds.csv, by S1),
@@ -24,7 +25,7 @@ import pandas as pd
 
 from ..config import DEV_IDS_FILE, FOLDS_FILE, RANDOM_SEED, WORK_DIR
 from ..data import id_to_int, save_parquet_atomic
-from ..evaluate import f05_from_counts
+from .decision import macro_f05, one_owner, select_expected_f, select_threshold
 from ..normalize import norm_path
 
 ID_COLS = ["s1_id", "cand_id"]
@@ -62,36 +63,6 @@ def oof_predict(X, y, fold, rounds, k):
         imp += m.feature_importance("gain")
         print(f"  fold {g}: {int(te.sum()):,} pairs, best iteration {m.best_iteration}", flush=True)
     return oof, iters, imp
-
-
-def one_owner(d):
-    best = d.groupby("tg_int").p.transform("max")
-    return d[d.p == best].drop_duplicates("tg_int")
-
-
-def select_threshold(d, t):
-    return d[d.p >= t]
-
-
-def select_expected_f(d, c, r):
-    """Greedy expected-F0.5 set per S1. c: extra expected true matches outside the candidates
-    (blocker misses); r: weight on the 'predict nothing' option (singletons)."""
-    d = d.sort_values(["s1_int", "p"], ascending=[True, False]).copy()
-    g = d.groupby("s1_int", sort=False)
-    d["k"] = g.cumcount() + 1
-    nhat = g.p.transform("sum") + c
-    d["E"] = 1.25 * g.p.cumsum() / (0.25 * nhat + d.k)
-    d["lq"] = np.log1p(-d.p.clip(upper=1 - 1e-6))
-    e0 = np.exp(d.groupby("s1_int", sort=False).lq.transform("sum")) * r
-    best = d.loc[d.groupby("s1_int", sort=False).E.idxmax(), ["s1_int", "k", "E"]]
-    d = d.merge(best.rename(columns={"k": "kbest", "E": "Ebest"}), on="s1_int")
-    d["e0"] = e0.values
-    return d[(d.k <= d.kbest) & (d.Ebest > d.e0)]
-
-
-def macro_f05(sel, dev_ints, n_true):
-    g = sel.groupby("s1_int").agg(n_pred=("y", "size"), tp=("y", "sum")).reindex(dev_ints, fill_value=0)
-    return f05_from_counts(n_true, g.n_pred.values, g.tp.values), g
 
 
 def main():
