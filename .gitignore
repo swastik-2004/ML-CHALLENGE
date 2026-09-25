@@ -79,3 +79,13 @@ __MACOSX/
 
 # --- Logs ---
 *.log
+
+# --- P1 working data (regenerate with python -m src.folds / src.normalize) ---
+data/**/*.csv
+data/**/*.parquet
+data/**/*.npy
+data/**/*.pkl
+data/norm/
+data/_to_delete/
+data/cache/
+*.tmp
