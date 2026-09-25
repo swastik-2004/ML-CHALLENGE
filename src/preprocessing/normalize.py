@@ -164,7 +164,7 @@ ADDR_CANON = {
     "place": "pl", "parkway": "pkwy", "highway": "hwy", "terrace": "ter", "square": "sq",
     "suite": "ste", "apartment": "apt", "floor": "fl", "flr": "fl", "building": "bldg",
     "north": "n", "south": "s", "east": "e", "west": "w", "northeast": "ne", "northwest": "nw",
-    "near": "nr", "opposite": "opp", "behind": "bhnd", "beside": "bsd", "adjacent": "adj",
+    "southeast": "se", "southwest": "sw", "near": "nr", "opposite": "opp", "behind": "bhnd", "beside": "bsd", "adjacent": "adj",
     "township": "twp", "mount": "mt", "route": "rte", "sector": "sec",
     "chemin": "ch", "impasse": "imp", "allee": "allee", "allée": "allee", "quai": "quai",
 }

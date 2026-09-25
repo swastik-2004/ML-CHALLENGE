@@ -54,6 +54,7 @@ def test_french_legal_and_landmarks():
     # Indian landmark prepositions canonicalized
     assert A("Near SBI ATM, Station Road")["addr_key"] == A("Nr SBI ATM, Station Rd")["addr_key"]
     assert A("Behind Bus Stand, MG Road")["addr_key"] == A("Bhnd Bus Stand, MG Rd")["addr_key"]
+    assert A("1200 Southeast 5th Avenue, Portland, OR")["addr_key"] == A("1200 SE 5th Ave, Portland, OR")["addr_key"]
 
 
 if __name__ == "__main__":
