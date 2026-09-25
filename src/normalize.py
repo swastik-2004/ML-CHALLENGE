@@ -39,10 +39,13 @@ def is_done(split: str, source: int) -> bool:
     return (norm_path(split, source) / "_SUCCESS").exists()
 
 
-def run(split: str, source: int, pool, deadline: float) -> bool:
+def run(split: str, source: int, pool, deadline: float, force: bool = False) -> bool:
     """Process missing parts until done (True) or the deadline passes (False)."""
+    import shutil
     d = norm_path(split, source)
-    if is_done(split, source):
+    if force and d.exists():
+        shutil.rmtree(d, ignore_errors=True)
+    elif not force and is_done(split, source):
         return True
     d.mkdir(parents=True, exist_ok=True)
     done = {int(p.stem.split("-")[1]) for p in d.glob("part-*.parquet")}
@@ -64,14 +67,15 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--splits", nargs="+", default=["train", "test"])
     ap.add_argument("--sources", nargs="+", type=int, default=[1, 2, 3])
-    ap.add_argument("--workers", type=int, default=2)
+    ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--max-seconds", type=float, default=1e9)
+    ap.add_argument("--force", action="store_true", help="Force re-normalization from scratch.")
     a = ap.parse_args()
     deadline = time.time() + a.max_seconds
     with Pool(a.workers) as pool:
         for sp in a.splits:
             for s in a.sources:
-                if not run(sp, s, pool, deadline):
+                if not run(sp, s, pool, deadline, force=a.force):
                     print("PAUSED (time budget) - rerun to continue", flush=True)
                     raise SystemExit(0)
                 print(f"DONE {sp} s{s}", flush=True)
