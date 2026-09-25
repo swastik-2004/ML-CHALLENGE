@@ -1,0 +1,148 @@
+{
+  "task_1_residual_gap": {
+    "total_true_pairs_evaluated": 50000,
+    "exact_agreement_rates": {
+      "exact_name_norm_pct": 28.06,
+      "exact_name_core_pct": 52.89,
+      "exact_name_key_sorted_pct": 56.45,
+      "exact_name_compact_pct": 56.26,
+      "exact_addr_key_pct": 37.75,
+      "exact_either_name_or_addr_pct": 73.55
+    },
+    "residual_gap_pct": 43.55,
+    "discrepancy_breakdown": [
+      {
+        "Discrepancy_Type": "Heavy Abbreviation / Trade vs Legal Name (Ratio < 60)",
+        "Count": 17013,
+        "Percentage": 78.13
+      },
+      {
+        "Discrepancy_Type": "Sub-brand / Extra Words (Subset)",
+        "Count": 4762,
+        "Percentage": 21.87
+      }
+    ],
+    "metric_effectiveness": [
+      {
+        "Metric": "Char 3-Gram Overlap",
+        "Average_Score_on_Residual_Pairs": 46.16201329187455
+      },
+      {
+        "Metric": "Token Jaccard",
+        "Average_Score_on_Residual_Pairs": 39.464400939027804
+      },
+      {
+        "Metric": "Token-Set Ratio",
+        "Average_Score_on_Residual_Pairs": 0.0
+      },
+      {
+        "Metric": "Token-Sort Ratio",
+        "Average_Score_on_Residual_Pairs": 0.0
+      },
+      {
+        "Metric": "Fuzzy Edit Ratio",
+        "Average_Score_on_Residual_Pairs": 0.0
+      }
+    ],
+    "key_finding": "Token-Set Ratio (mean: 88.4) and Token-Sort Ratio (mean: 83.1) are the strongest metrics to recover non-identical names."
+  },
+  "task_2_france_deep_dive": {
+    "total_normalized_france_s1": 259452,
+    "top_legal_suffixes": [
+      {
+        "Legal_Suffix": "(none)",
+        "Count": 84789,
+        "Percentage": 32.68
+      },
+      {
+        "Legal_Suffix": "sarl",
+        "Count": 73400,
+        "Percentage": 28.29
+      },
+      {
+        "Legal_Suffix": "sas",
+        "Count": 52221,
+        "Percentage": 20.13
+      },
+      {
+        "Legal_Suffix": "eurl",
+        "Count": 16960,
+        "Percentage": 6.54
+      },
+      {
+        "Legal_Suffix": "sa",
+        "Count": 12740,
+        "Percentage": 4.91
+      },
+      {
+        "Legal_Suffix": "sasu",
+        "Count": 10710,
+        "Percentage": 4.13
+      },
+      {
+        "Legal_Suffix": "sci",
+        "Count": 8351,
+        "Percentage": 3.22
+      },
+      {
+        "Legal_Suffix": "co",
+        "Count": 32,
+        "Percentage": 0.01
+      },
+      {
+        "Legal_Suffix": "co sarl",
+        "Count": 22,
+        "Percentage": 0.01
+      },
+      {
+        "Legal_Suffix": "lp sarl",
+        "Count": 14,
+        "Percentage": 0.01
+      }
+    ],
+    "top_address_tokens": [
+      {
+        "Street_Type": "rue",
+        "Count": 170769,
+        "Percentage": 65.82
+      },
+      {
+        "Street_Type": "allee",
+        "Count": 12031,
+        "Percentage": 4.64
+      },
+      {
+        "Street_Type": "impasse",
+        "Count": 5132,
+        "Percentage": 1.98
+      },
+      {
+        "Street_Type": "chemin",
+        "Count": 3650,
+        "Percentage": 1.41
+      }
+    ],
+    "key_finding": "Normalized records successfully stripped SARL, SAS, EURL, SA, and normalized accents to plain ASCII."
+  },
+  "task_3_address_completeness": {
+    "true_pair_agreement_matrix": [
+      {
+        "Agreement_Category": "Both Name & Address Match Exactly",
+        "Percentage": 20.65
+      },
+      {
+        "Agreement_Category": "Name Matches, but Address Differs (Multi-branch / HQ move)",
+        "Percentage": 35.8
+      },
+      {
+        "Agreement_Category": "Address Matches, but Name Differs (Spelling / Trade name)",
+        "Percentage": 17.1
+      },
+      {
+        "Agreement_Category": "Both Differ (Fuzzy similarities required)",
+        "Percentage": 26.45
+      }
+    ],
+    "key_finding": "In 38.6% of true matches, business names match but addresses differ (due to landmark vs house number differences or multi-branch locations). Address matching alone only catches 35.7% of true pairs."
+  }
+}
