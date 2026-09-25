@@ -82,6 +82,14 @@ def id_to_int(ids) -> "np.ndarray":
     return src * 10**11 + s.str[3:].astype("int64").values
 
 
+def int_to_id(ints):
+    """2*10**11 + 764573417 -> 'S2-764573417'."""
+    import numpy as np
+    if isinstance(ints, (int, np.integer)):
+        return f"S{ints // 10**11}-{ints % 10**11}"
+    return [f"S{i // 10**11}-{i % 10**11}" for i in ints]
+
+
 def save_parquet_atomic(df: pd.DataFrame, path) -> None:
     """Write to <path>.tmp then rename, so an interrupted write never looks complete."""
     from pathlib import Path

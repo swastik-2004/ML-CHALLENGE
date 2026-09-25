@@ -1,0 +1,73 @@
+{
+  "rule_metrics": [
+    {
+      "rule": "R1_name_key",
+      "total_pairs": 9031668,
+      "dev_pairs": 409085,
+      "rule_recall": 45.97,
+      "cumulative_recall": 45.97,
+      "elapsed_seconds": 17.07
+    },
+    {
+      "rule": "R2_name_compact",
+      "total_pairs": 8911377,
+      "dev_pairs": 404812,
+      "rule_recall": 45.67,
+      "cumulative_recall": 48.76,
+      "elapsed_seconds": 16.77
+    },
+    {
+      "rule": "R3_addr_key",
+      "total_pairs": 3550162,
+      "dev_pairs": 161516,
+      "rule_recall": 37.83,
+      "cumulative_recall": 68.75,
+      "elapsed_seconds": 22.64
+    },
+    {
+      "rule": "R4_w1_name",
+      "total_pairs": 3015420,
+      "dev_pairs": 138912,
+      "rule_recall": 7.69,
+      "cumulative_recall": 70.21,
+      "elapsed_seconds": 15.59
+    },
+    {
+      "rule": "R5_house_p3",
+      "total_pairs": 15287713,
+      "dev_pairs": 690369,
+      "rule_recall": 52.65,
+      "cumulative_recall": 80.38,
+      "elapsed_seconds": 25.11
+    },
+    {
+      "rule": "R6_state_w1",
+      "total_pairs": 10363844,
+      "dev_pairs": 468515,
+      "rule_recall": 32.33,
+      "cumulative_recall": 82.4,
+      "elapsed_seconds": 26.89
+    },
+    {
+      "rule": "R7_w2_name",
+      "total_pairs": 1061554,
+      "dev_pairs": 48523,
+      "rule_recall": 2.65,
+      "cumulative_recall": 82.5,
+      "elapsed_seconds": 24.16
+    }
+  ],
+  "pool_statistics": {
+    "total_dev_entities": 100000,
+    "entities_with_candidates": 95961,
+    "coverage_pct": 95.96,
+    "mean_candidates_per_entity": 16.17,
+    "median_candidates": 12,
+    "p75_candidates": 23,
+    "p90_candidates": 36,
+    "p95_candidates": 44,
+    "p99_candidates": 59,
+    "max_candidates": 106,
+    "total_benchmark_time_seconds": 238.14
+  }
+}

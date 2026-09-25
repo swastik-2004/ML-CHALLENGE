@@ -1,6 +1,6 @@
 """
 Blocking and candidate generation modules.
 """
-from .blocker import RuleBlocker, generate_candidates
+from .blocker import MultiPassBlocker, generate_candidate_pairs
 
-__all__ = ["RuleBlocker", "generate_candidates"]
+__all__ = ["MultiPassBlocker", "generate_candidate_pairs"]
