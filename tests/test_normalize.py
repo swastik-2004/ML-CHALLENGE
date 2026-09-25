@@ -47,6 +47,15 @@ def test_house_numbers_and_postal():
     assert A("")["addr_empty"] == 1
 
 
+def test_french_legal_and_landmarks():
+    # French legal suffixes stripped so core names match
+    assert N("Société Générale de Banque (Cie)")["name_key"] == N("Societe Generale de Banque")["name_key"]
+    assert N("Etablissements Dupont SARL")["name_key"] == "dupont"
+    # Indian landmark prepositions canonicalized
+    assert A("Near SBI ATM, Station Road")["addr_key"] == A("Nr SBI ATM, Station Rd")["addr_key"]
+    assert A("Behind Bus Stand, MG Road")["addr_key"] == A("Bhnd Bus Stand, MG Rd")["addr_key"]
+
+
 if __name__ == "__main__":
     for n, fn in list(globals().items()):
         if n.startswith("test_"):

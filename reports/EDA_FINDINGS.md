@@ -1,7 +1,7 @@
 # Exploratory Data Analysis (EDA) Findings & Visualizations
 
 > **Business Entity Resolution — Amazon ML Challenge 2026**  
-> *A plain-English summary of what the data looks like, empirical discoveries from raw datasets, and practical modeling guidelines.*
+> *A plain-English summary of dataset characteristics, empirical discoveries from raw and normalized data, script methodology, and resulting preprocessing enhancements.*
 
 ---
 
@@ -74,42 +74,100 @@ The dataset is massive. Here are the exact numbers calculated directly from the 
   - **51.6% (3,944,746)** are from **Source 3**.
 
 ### Why this matters:
-- The matches are almost evenly split between Source 2 and Source 3.
-- Both sources are equally important and must be searched with equal weight.
+- The matches are almost evenly split between Source 2 and Source 3. Both sources are equally important and must be searched with equal weight.
 
 ---
 
-## 6. Finding 4: French Test Data Deep Dive (Task 2)
+## 6. What `src/eda_tasks_1_2_3.py` Does (Architecture & Methodology)
 
-France represents **259,452 records** in the test set. An empirical analysis of French entities in `test_source1.tsv` reveals major structural differences from US and Indian data:
+The script [`src/eda_tasks_1_2_3.py`](../src/eda_tasks_1_2_3.py) was built to systematically evaluate the dataset once the full ~25 million records were normalized into partitioned Parquet format (`data/norm/`).
 
-### A. French Corporate Suffixes (Over 70% of French businesses!)
-![French Suffixes](figures/france_legal_suffixes.png)
-
-- **`SARL` (28.19%)** — *Société à Responsabilité Limitée* (LLC equivalent)
-- **`SAS` (20.17%)** — *Société par Actions Simplifiée*
-- **`EURL` (6.63%)** — *Entreprise Unipersonnelle à Responsabilité Limitée*
-- **`SA` (4.84%)** — *Société Anonyme*
-- **`SASU` (4.21%)** & **`SCI` (3.31%)**
-- **Action for Normalizer:** English cleaners only strip `Inc`, `Corp`, `LLC`, `Pvt Ltd`. If French suffixes (`sarl`, `sas`, `eurl`, `sa`, `sci`) are not stripped/normalized, **over 70% of French business names will fail to match**!
-
-### B. French Street Vocabulary
-![French Address Keywords](figures/france_address_keywords.png)
-
-- **`rue` (65.74%)**: Over two-thirds of French addresses use the word `rue` (street).
-- **`avenue` / `av` (12.84%)**, **`allée` (4.71%)**, **`boulevard` / `bd` (4.32%)**, **`impasse` (1.92%)**, **`route` (1.86%)**.
-- **Action for Normalizer:** French abbreviations must be expanded: `av` $\rightarrow$ `avenue`, `bd` $\rightarrow$ `boulevard`, `pl` $\rightarrow$ `place`, `rte` $\rightarrow$ `route`.
-
-### C. French Accents & Character Encoding
-- **38.51% (nearly 100,000 records)** contain French accent characters (`é`, `è`, `ê`, `à`, `ç`, `ô`, `î`).
-- If one source writes `"Société"` and another writes `"Societe"`, exact string matching fails.
-- **Action for Normalizer:** Must apply Unicode NFKD / unidecode stripping to normalize accented characters to plain ASCII letters.
+### How It Operates:
+1. **Input Data Ingestion**:
+   - Reads the official 100k dev sample IDs (`data/dev_s1_ids.csv`).
+   - Retrieves the corresponding ground truth pairs from `train_ground_truth.tsv` (345,968 true links).
+   - Reads the normalized columns from `data/norm/train_s1`, `train_s2`, `train_s3` and `test_s1`.
+2. **Task 1 Execution (Post-Normalization Residual Gap)**:
+   - Evaluates 50,000 true matching pairs to check exact agreement across normalized representations (`name_norm`, `name_core`, `name_key`, `name_compact`, `addr_key`).
+   - Isolates the residual non-matching pairs (43.55%) and categorizes why names differ (sub-brands, typos, acronyms, trade names).
+   - Evaluates fuzzy similarity metrics (Character 3-Gram Overlap, Token Jaccard).
+3. **Task 2 Execution (France Test Data Deep Dive)**:
+   - Scans all 259,452 normalized French records in `test_s1`.
+   - Analyzes the distribution of French corporate suffixes and street vocabulary.
+4. **Task 3 Execution (Address Agreement Matrix & Completeness)**:
+   - Computes a $2 \times 2$ agreement matrix comparing whether true pairs match on name, address, both, or neither.
+   - Measures postal code missingness across US, India, and France.
+5. **Output Generation**:
+   - Saves clean CSV tables and JSON summaries to `output/`.
+   - Generates 4 publication-quality visualization charts to `reports/figures/` and `output/`.
 
 ---
 
-## 7. Finding 5: Address Completeness & The "Postal Code Myth" (Task 3)
+## 7. Task 1 Code Findings: Post-Normalization "Residual Gap" Analysis
 
-### A. Postal Codes are Missing in 89% to 100% of Records!
+We evaluated **50,000 true matching pairs from the 100k dev sample (`data/dev_s1_ids.csv`)**:
+
+### A. True Pair Agreement Across Normalized Representations
+
+| Representation | Definition | Exact Match % on True Pairs |
+| :--- | :--- | :--- |
+| **`name_norm`** | Clean lowercase text with stripped punctuation | **28.06%** |
+| **`name_core`** | Strips company legal suffixes (`Corp`, `Ltd`, `SARL`) | **52.89%** |
+| **`name_key`** | Sorted tokens (order-invariant) + legal stripped | **56.45%** |
+| **`name_compact`** | No spaces/dots (matches domain forms like `acmecorp.com`) | **56.26%** |
+| **`addr_key`** | Reorder-invariant address tokens | **37.75%** |
+| **`EITHER`** | **Matches on `name_key` OR `addr_key`** | **73.55%** |
+
+> 💡 **Why the Baseline Scored 0.683:**  
+> When you allow either `name_key` OR `addr_key` to match, exact rules capture **73.55% of true pairs**! This is why the exact-key baseline achieved a solid **0.6831 Macro $F_{0.5}$** without any complex training.
+
+---
+
+### B. What Causes the 43.55% Name Residual Gap?
+![Residual Name Discrepancies](figures/residual_name_discrepancies.png)
+
+For the **43.55% of true pairs** that do NOT have identical `name_key` after cleaning:
+1. **Sub-brands & Extra Words (21.9%)**:  
+   One source includes extra descriptive words while the other has only the core brand:  
+   *Example:* `"Starbucks"` vs. `"Starbucks Coffee Company"` or `"Walmart Supercenter"` vs. `"Walmart"`.  
+2. **Heavy Abbreviations & Trade vs Legal Names (78.1%)**:  
+   Acronyms, spelling variations, or trade names that differ substantially from registered corporate names:  
+   *Example:* `"TCS"` vs. `"Tata Consultancy Services"`, `"State Bank of India"` vs. `"SBI"`.
+
+---
+
+### C. Similarity Metrics on Residual Pairs
+![Similarity Metrics Comparison](figures/similarity_metrics_comparison.png)
+
+When exact match fails on the residual pairs:
+- **Character 3-Gram Overlap**: Scores an average of **46.2%** on non-identical true pairs.
+- **Token Jaccard**: Scores an average of **39.5%**.
+- **Takeaway:** Using character n-grams and token overlap as features in LightGBM/XGBoost is the key to closing the remaining 36.6% recall gap.
+
+---
+
+## 8. Task 2 Code Findings: French Test Data Deep Dive
+
+France accounts for **259,452 records (15.0% of the test set)** with **zero training examples**.
+
+### A. Normalized French Legal Suffixes & Street Vocabulary
+![France Normalized Patterns](figures/france_normalized_patterns.png)
+
+- **Over 70% of French businesses use French corporate suffixes:**  
+  - **`sarl` (28.29%)** — *Société à Responsabilité Limitée*
+  - **`sas` (20.13%)** — *Société par Actions Simplifiée*
+  - **`eurl` (6.54%)** — *Entreprise Unipersonnelle à Responsabilité Limitée*
+  - **`sa` (4.91%)** — *Société Anonyme*
+  - **`sasu` (4.13%)** & **`sci` (3.22%)**
+- **French Street Types in Normalized Data:**  
+  `rue` (65.7%), `avenue` (12.8%), `allée` (4.7%), `boulevard` (4.3%), `impasse` (1.9%), `route` (1.9%).
+- **Accents:** 38.5% of French records contain accents (`é`, `è`, `ê`, `à`, `ç`). Normalization successfully strips them to plain ASCII (e.g. `société` $\rightarrow$ `societe`).
+
+---
+
+## 9. Task 3 Code Findings: Address Completeness & The "Postal Code Myth"
+
+### A. The Postal Code Myth: Postal Codes are 89%–100% Missing!
 ![Postal Code Missing Rates](figures/postal_code_missing_rates.png)
 
 We checked the presence of postal codes across 100,000+ real records:
@@ -117,9 +175,9 @@ We checked the presence of postal codes across 100,000+ real records:
 - **France (5-digit Postal):** Only **0.40% present** (**99.60% MISSING**).
 - **India (6-digit PIN):** **0.00% present** (**100.00% MISSING**).
 
-> 🚨 **CRITICAL DISCOVERY FOR CANDIDATE BLOCKING:**  
-> Postal codes **CANNOT** be used as a primary candidate blocking key.  
-> Attempting to block candidates by postal code will **discard 90% to 100% of true matches** right at the entrance of the pipeline.  
+> 🚨 **CRITICAL RULE FOR BLOCKING:**  
+> Postal codes **CANNOT** be used as a candidate blocking key.  
+> Attempting to block candidates by postal code will **discard 90% to 100% of true matches**!  
 > **Rule:** Candidate blocking must rely on `Country + Clean Name Tokens / 3-Gram Prefixes`, NOT postal codes.
 
 ---
@@ -127,35 +185,39 @@ We checked the presence of postal codes across 100,000+ real records:
 ### B. Address Formatting: India vs. US
 ![Landmark Comparison](figures/address_landmark_comparison.png)
 
-- **Landmark Reliance in India:**
-  - **13.67%** of Indian addresses explicitly use landmark navigation keywords: `near`, `opp` / `opposite`, `behind`, `beside`, `nr`.
-  - In the US, landmark keywords appear in only **0.02%** of addresses.
-  - **1.72%** of Indian addresses are purely landmark-based with **zero numeric identifiers** (e.g. *"Opposite Bus Stand, Station Road"*).
-- **Numeric Identifiers:**
-  - US addresses are strictly numbered: **99.60%** contain street numbers (`11237 Lanewood Cir`).
-  - Indian addresses have numbers in **88.65%** of records.
-- **Action:** For Indian addresses, similarity metrics must give credit for landmark token overlap and not penalize addresses lacking house numbers.
+- **Landmark Reliance in India:**  
+  **13.67%** of Indian addresses explicitly use landmark navigation keywords: `near`, `opp` / `opposite`, `behind`, `beside`, `nr`. (In US: only 0.02%).
+- **Numeric Identifiers:**  
+  US addresses are strictly numbered (**99.60%** contain street numbers like `11237 Lanewood Cir`). Indian addresses have numbers in **88.65%** of records.
 
 ---
 
-### C. True Pair Address Discrepancies (Multi-Branch & Move Risks)
-Analyzing true matching pairs from `train_ground_truth.tsv`:
-- **62.5%** of true matching pairs have strong address overlap (Jaccard similarity $> 0.50$).
-- **37.5%** of true pairs have **partial or divergent addresses** (Jaccard $\le 0.50$).
-  * *Reason:* One record might only list `"Lanewood Cir"` while another lists `"11237 Lanewood Cir, Dallas, TX"`. Multi-branch franchises also share names across different cities.
-- **Rule:** High name similarity + High address similarity = **Definite Match**. If the name is generic (e.g. "Shree Ganesh Traders"), address agreement is mandatory to avoid false merges.
+### C. True Pair Agreement Matrix (Name vs Address Agreement)
+![Address Agreement Breakdown](figures/address_discrepancy_breakdown.png)
 
----
+We evaluated where the agreement comes from in true matching pairs:
 
-## 8. Summary of Machine Learning Guidelines
-
-| Component | Finding | Action to Take |
+| Agreement Category | % of True Pairs | Meaning & Machine Learning Implication |
 | :--- | :--- | :--- |
-| **Normalizer** | Over 70% of French entities have `SARL`, `SAS`, `EURL`. 38.5% have accents. | Add French suffix normalization and Unicode NFKD accent stripping. |
-| **Normalizer** | Over 92% of French addresses use `rue`, `avenue`, `allée`, `boulevard`. | Standardize French street types (`av` $\rightarrow$ `avenue`, `bd` $\rightarrow$ `boulevard`). |
-| **Blocker** | Postal codes are 89%–100% missing across US, India, and France. | **Do NOT block by postal code.** Block by `Country + First Name Token + 3-Gram Prefix`. |
-| **Features** | 13.7% of Indian records use landmark navigation phrases. | Token overlap feature that rewards landmark words (`opposite`, `near`, `behind`). |
-| **Matcher** | 5.58% singletons; false merges penalized $2\times$ under $F_{0.5}$. | Calibrate decision threshold $\ge 0.85$ to safely output empty predictions for singletons. |
+| **Both Name & Address Match Exactly** | **20.65%** | Perfect high-confidence match. |
+| **Name Matches, Address Differs** | **35.80%** | Same company, but one source has landmark/short address or HQ moved. **Do not reject a match solely because address differs if the name is unique.** |
+| **Address Matches, Name Differs** | **17.10%** | Same location, but name has heavy spelling variation or trade name. Address agreement saves the match. |
+| **Both Differ (Fuzzy Needed)** | **26.45%** | **Neither exact name nor address matches!** Requires ML fuzzy matching. |
+
+---
+
+## 10. Data Preprocessing Enhancements Based on Findings
+
+Based directly on these empirical discoveries, the following concrete enhancements are made to the preprocessing pipeline:
+
+1. **Expanded French Legal Entity Vocabulary**:
+   - Added missing French corporate designations to the legal suffix stripper: `cie`, `societe`, `ste`, `association`, `ets`, `etablissements`.
+2. **Expanded French Street Abbreviations**:
+   - Added canonical street mapping: `av` / `ave` $\rightarrow$ `avenue`, `bd` $\rightarrow$ `boulevard`, `pl` $\rightarrow$ `place`, `rte` $\rightarrow$ `route`, `allée` / `allee` $\rightarrow$ `allee`.
+3. **Landmark Preposition Normalization for Indian Addresses**:
+   - Mapped `opposite`, `opp`, `near`, `nr`, `behind`, `beside`, `adjacent` into standard canonical tokens so that *"Near Railway Station"* and *"Railway Station"* can align on `addr_key`.
+4. **Sub-Brand / Generic Business Descriptor Handling**:
+   - Stripping trailing generic noise tokens (`enterprises`, `solutions`, `technologies`, `services`, `group`, `industries`, `holdings`) to generate a `name_stem` that closes the 21.9% subset residual gap.
 
 ---
 

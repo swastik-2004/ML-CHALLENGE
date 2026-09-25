@@ -1,0 +1,5 @@
+Agreement_Category,Percentage
+Both Name & Address Match Exactly,20.65
+"Name Matches, but Address Differs (Multi-branch / HQ move)",35.8
+"Address Matches, but Name Differs (Spelling / Trade name)",17.1
+Both Differ (Fuzzy similarities required),26.45
