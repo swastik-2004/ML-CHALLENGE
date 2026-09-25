@@ -140,3 +140,38 @@ We evaluated candidate load per entity across all 100,000 Dev Source 1 entities:
    - Every Source 1 entity in `test_source1.tsv` has exactly one row.
    - All candidate IDs are validated against Target S2/S3 ID pools.
    - Lists are deduplicated and comma-separated with tab separation between entity ID and candidates.
+
+---
+
+## 7. Amazon Scalability Criterion: Recall@K Pareto Frontier Analysis
+
+> 🏆 **Critical Competition Update:**  
+> *"Candidate generation counts toward the final ranking. We will review your `candidate_pairs.tsv` and the code that produces it when deciding final rankings, alongside your `matching_results.tsv` score. The approach that generates a smaller candidate set per Source 1 entity will be ranked higher in the final evaluation beyond the public/private leaderboard."*
+
+To optimize for this ranking criterion, we mapped the **Pareto Trade-Off Curve** between the candidate pool size cap ($K$) and ground-truth recall ($R@K$) across all 100,000 dev entities (345,968 true matching pairs):
+
+![Pareto Recall vs Candidate Size](figures/pareto_recall_vs_candidate_size.png)
+
+### Recall@K vs. Candidate Pool Sizing:
+
+| Candidate Cap ($K$) | Recall@K (%) | Total Dev Pairs | Mean Candidates / Entity | Median Candidates | 90th Percentile | Efficiency Assessment |
+| :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **$K=1$** | 23.62% | 95,961 | 0.96 | 1 | 1 | Extremely sparse; only single highest-confidence match. |
+| **$K=2$** | 42.07% | 187,768 | 1.88 | 2 | 2 | Top 2 candidates capture nearly half of true links. |
+| **$K=3$** | 55.01% | 274,749 | 2.75 | 3 | 3 | Approaching baseline recall with under 3 candidates/entity! |
+| **$K=5$** | 68.10% | 433,052 | 4.33 | 5 | 5 | **Surpasses Baseline Recall (63.26%)** with only 4.3 candidates/entity! |
+| **$K=8$** | 74.20% | 635,304 | 6.35 | 8 | 8 | High-efficiency lean candidate pool. |
+| **$K=10$** | 76.15% | 751,295 | 7.51 | 10 | 10 | Captures >76% of matches with ~7.5 candidates/entity. |
+| **$K=15$** | **79.00%** | **987,718** | **9.88** | **12** | **15** | ⭐ **Optimal Pareto Operating Point** (slashes pairs by 35% with <3.5% recall difference). |
+| **$K=20$** | **80.42%** | **1,162,680** | **11.63** | **12** | **20** | **High-Recall Scalable Point** (>80% recall, 11.6 candidates). |
+| **$K=30$** | 81.72% | 1,380,790 | 13.81 | 12 | 30 | Diminishing returns region. |
+| **$K=50$** | **82.44%** | **1,529,861** | **15.30** | **12** | **36** | Maximum allowed recall ceiling (default ceiling). |
+
+### Key Strategic Recommendations for Amazon Evaluation:
+1. **The $K=5$ Milestone:**
+   At just **5 candidates per entity**, our blocker achieves **68.10% recall**, already beating the full unconstrained baseline recall (63.26%).
+2. **The $K=15$ Sweet Spot:**
+   Setting `--max-candidates 15` yields an average of **only 9.88 candidates per entity** while retaining **79.00% true match recall**. This reduces candidate storage and downstream classifier comparison load by **35.4%** compared to $K=50$.
+3. **Prioritized In-List Ordering:**
+   Because our multi-pass blocker sorts candidate pairs by `(best_priority ASC, n_rules DESC)`, the most probable matches appear first. Any truncated candidate list preserves the highest-probability links.
+

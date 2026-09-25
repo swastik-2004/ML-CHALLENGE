@@ -1,0 +1,122 @@
+[
+  {
+    "k": 1,
+    "recall_at_k": 23.62,
+    "total_pairs": 95961,
+    "mean_candidates_per_entity": 0.96,
+    "median_candidates": 1,
+    "p90_candidates": 1
+  },
+  {
+    "k": 2,
+    "recall_at_k": 42.07,
+    "total_pairs": 187768,
+    "mean_candidates_per_entity": 1.88,
+    "median_candidates": 2,
+    "p90_candidates": 2
+  },
+  {
+    "k": 3,
+    "recall_at_k": 55.01,
+    "total_pairs": 274749,
+    "mean_candidates_per_entity": 2.75,
+    "median_candidates": 3,
+    "p90_candidates": 3
+  },
+  {
+    "k": 4,
+    "recall_at_k": 63.22,
+    "total_pairs": 356547,
+    "mean_candidates_per_entity": 3.57,
+    "median_candidates": 4,
+    "p90_candidates": 4
+  },
+  {
+    "k": 5,
+    "recall_at_k": 68.1,
+    "total_pairs": 433052,
+    "mean_candidates_per_entity": 4.33,
+    "median_candidates": 5,
+    "p90_candidates": 5
+  },
+  {
+    "k": 6,
+    "recall_at_k": 71.0,
+    "total_pairs": 504676,
+    "mean_candidates_per_entity": 5.05,
+    "median_candidates": 6,
+    "p90_candidates": 6
+  },
+  {
+    "k": 8,
+    "recall_at_k": 74.2,
+    "total_pairs": 635304,
+    "mean_candidates_per_entity": 6.35,
+    "median_candidates": 8,
+    "p90_candidates": 8
+  },
+  {
+    "k": 10,
+    "recall_at_k": 76.15,
+    "total_pairs": 751295,
+    "mean_candidates_per_entity": 7.51,
+    "median_candidates": 10,
+    "p90_candidates": 10
+  },
+  {
+    "k": 12,
+    "recall_at_k": 77.54,
+    "total_pairs": 854282,
+    "mean_candidates_per_entity": 8.54,
+    "median_candidates": 12,
+    "p90_candidates": 12
+  },
+  {
+    "k": 15,
+    "recall_at_k": 79.0,
+    "total_pairs": 987718,
+    "mean_candidates_per_entity": 9.88,
+    "median_candidates": 12,
+    "p90_candidates": 15
+  },
+  {
+    "k": 20,
+    "recall_at_k": 80.42,
+    "total_pairs": 1162680,
+    "mean_candidates_per_entity": 11.63,
+    "median_candidates": 12,
+    "p90_candidates": 20
+  },
+  {
+    "k": 25,
+    "recall_at_k": 81.22,
+    "total_pairs": 1290389,
+    "mean_candidates_per_entity": 12.9,
+    "median_candidates": 12,
+    "p90_candidates": 25
+  },
+  {
+    "k": 30,
+    "recall_at_k": 81.72,
+    "total_pairs": 1380790,
+    "mean_candidates_per_entity": 13.81,
+    "median_candidates": 12,
+    "p90_candidates": 30
+  },
+  {
+    "k": 40,
+    "recall_at_k": 82.21,
+    "total_pairs": 1485644,
+    "mean_candidates_per_entity": 14.86,
+    "median_candidates": 12,
+    "p90_candidates": 36
+  },
+  {
+    "k": 50,
+    "recall_at_k": 82.44,
+    "total_pairs": 1529861,
+    "mean_candidates_per_entity": 15.3,
+    "median_candidates": 12,
+    "p90_candidates": 36
+  }
+]

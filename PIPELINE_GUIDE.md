@@ -111,11 +111,15 @@ python -m src.blocking.benchmark_blocking
 ```
 *Evaluates individual rule recall, cumulative recall progression, candidate pool sizes, and saves `output/blocking_benchmark_results.json`.*
 
-#### C. Plot Benchmark Figures:
+#### C. Plot Benchmark Figures & Evaluate Pareto Frontier:
 ```bash
+# Generate benchmark charts
 python -m src.blocking.plot_blocking_results
+
+# Evaluate Recall@K Pareto curve (Amazon Scalability Criterion)
+python -m src.blocking.eval_pareto_curve
 ```
-*Generates publication-quality charts saved to `reports/figures/blocking_recall_progression.png` and `reports/figures/candidate_pool_distribution.png`.*
+*Generates `reports/figures/blocking_recall_progression.png`, `reports/figures/candidate_pool_distribution.png`, and `reports/figures/pareto_recall_vs_candidate_size.png`.*
 
 #### D. Production Blocker Execution:
 ```bash
@@ -123,6 +127,13 @@ python -m src.blocking.plot_blocking_results
 python -m src.blocking.blocker --split train --skip-tsv
 
 # 2. Build candidates and generate the official submission candidate_pairs.tsv for the test set
+# Option A (Pareto-Optimal for Amazon Evaluation: 79.0% recall, avg ~9.8 candidates/entity):
+python -m src.blocking.blocker --split test --max-candidates 15
+
+# Option B (High-Recall Scalable: 80.4% recall, avg ~11.6 candidates/entity):
+python -m src.blocking.blocker --split test --max-candidates 20
+
+# Option C (Max Recall Ceiling: 82.4% recall, avg ~15.3 candidates/entity):
 python -m src.blocking.blocker --split test --max-candidates 50
 ```
 
@@ -130,7 +141,7 @@ python -m src.blocking.blocker --split test --max-candidates 50
 | Argument | Type | Default | Description |
 | :--- | :---: | :---: | :--- |
 | `--split` | `str` | `test` | Dataset split to process: `train` or `test`. |
-| `--max-candidates` | `int` | `50` | Maximum candidate matches allowed per S1 entity (strictly capped). |
+| `--max-candidates` | `int` | `50` | Maximum candidate matches allowed per S1 entity. Use `15` or `20` to maximize Amazon's candidate pool size ranking criterion. |
 | `--output` | `str` | `None` | Custom output TSV path (defaults to `output/candidate_pairs.tsv`). |
 | `--skip-tsv` | `flag` | `False` | Only build and save the parquet cache (`data/cache/candidate_pairs_{split}.parquet`), skipping the TSV generation. |
 
@@ -138,6 +149,7 @@ python -m src.blocking.blocker --split test --max-candidates 50
 - `data/cache/candidate_pairs_train.parquet` (33.7M candidate pairs)
 - `data/cache/candidate_pairs_test.parquet` (25.8M candidate pairs)
 - `output/candidate_pairs.tsv` (Official competition candidate file for 1.73M test entities)
+- `output/recall_at_k_tradeoff.json` (Pareto curve data points)
 
 ---
 
