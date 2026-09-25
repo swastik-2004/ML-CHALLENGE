@@ -1,0 +1,78 @@
+# ==============================================================================
+# Amazon ML Challenge 2026 - .gitignore
+# ==============================================================================
+
+# --- Problem Statement Raw Files / PDF ---
+*.pdf
+*_problem_statement.*
+6ab5628d5a817_amazon_ml_challenge_problem_statement.pdf
+!PROBLEM_STATEMENT.md
+
+# --- Dataset and Large Data Files ---
+dataset/
+student_resource/dataset/
+data/*.tsv
+data/*.csv
+data/*.parquet
+data/*.gz
+data/*.zip
+*.tsv
+*.csv
+
+# Exceptions: Allow gitkeep in data/output if needed
+!data/.gitkeep
+!output/.gitkeep
+
+# --- Submission and Large Output Files ---
+output/*.tsv
+output/*.zip
+*.zip
+*.tar.gz
+
+# --- Python Virtual Environment ---
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# --- Python Cache and Compiled Files ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Model Checkpoints and Artifacts ---
+models/*.pkl
+models/*.joblib
+models/*.pt
+models/*.pth
+models/*.bin
+models/*.onnx
+*.pkl
+*.joblib
+
+# --- Jupyter Notebook Checkpoints ---
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# --- OS and IDE Metadata ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+__MACOSX/
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# --- Logs ---
+*.log

@@ -1,0 +1,28 @@
+{
+  "line_counts": {
+    "train_source1": 2206822,
+    "train_source2": 5034617,
+    "train_source3": 5285604,
+    "train_ground_truth": 2206822,
+    "test_source1": 1732545,
+    "test_source2": 4887274,
+    "test_source3": 5082317
+  },
+  "train_s1_total": 2206821,
+  "singletons": 123247,
+  "singletons_pct": 5.58,
+  "matched_entities": 2083574,
+  "matched_entities_pct": 94.42,
+  "total_matches": 7638365,
+  "total_s2_matches": 3693619,
+  "total_s3_matches": 3944746,
+  "train_countries": {
+    "US": 1323633,
+    "India": 883188
+  },
+  "test_countries": {
+    "India": 809986,
+    "US": 663106,
+    "France": 259452
+  }
+}
