@@ -1,0 +1,14 @@
+{
+  "dev_entities": 100000,
+  "dev_truth_pairs": 345968,
+  "matched_truth_pairs": 300611,
+  "candidate_recall_pct": 86.89,
+  "mean_candidates_per_entity": 25.82,
+  "median_candidates": 25,
+  "p75_candidates": 39,
+  "p90_candidates": 50,
+  "p95_candidates": 50,
+  "p99_candidates": 50,
+  "max_candidates": 50,
+  "coverage_pct": 98.2
+}
