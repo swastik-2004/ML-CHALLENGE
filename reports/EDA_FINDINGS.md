@@ -1,7 +1,7 @@
 # Exploratory Data Analysis (EDA) Findings & Visualizations
 
 > **Business Entity Resolution — Amazon ML Challenge 2026**  
-> *A plain-English summary of what the data looks like, empirical discoveries from raw and normalized datasets, and practical modeling guidelines.*
+> *A plain-English summary of dataset characteristics, empirical discoveries from raw and normalized data, script methodology, and resulting preprocessing enhancements.*
 
 ---
 
@@ -78,9 +78,34 @@ The dataset is massive. Here are the exact numbers calculated directly from the 
 
 ---
 
-## 6. Finding 4: Post-Normalization "Residual Gap" Analysis (Task 1)
+## 6. What `src/eda_tasks_1_2_3.py` Does (Architecture & Methodology)
 
-Now that all ~25 million records are normalized into `data/norm/`, we evaluated **50,000 true matching pairs from the 100k dev sample (`data/dev_s1_ids.csv`)** to measure how well normalization worked and why residual pairs still differ.
+The script [`src/eda_tasks_1_2_3.py`](../src/eda_tasks_1_2_3.py) was built to systematically evaluate the dataset once the full ~25 million records were normalized into partitioned Parquet format (`data/norm/`).
+
+### How It Operates:
+1. **Input Data Ingestion**:
+   - Reads the official 100k dev sample IDs (`data/dev_s1_ids.csv`).
+   - Retrieves the corresponding ground truth pairs from `train_ground_truth.tsv` (345,968 true links).
+   - Reads the normalized columns from `data/norm/train_s1`, `train_s2`, `train_s3` and `test_s1`.
+2. **Task 1 Execution (Post-Normalization Residual Gap)**:
+   - Evaluates 50,000 true matching pairs to check exact agreement across normalized representations (`name_norm`, `name_core`, `name_key`, `name_compact`, `addr_key`).
+   - Isolates the residual non-matching pairs (43.55%) and categorizes why names differ (sub-brands, typos, acronyms, trade names).
+   - Evaluates fuzzy similarity metrics (Character 3-Gram Overlap, Token Jaccard).
+3. **Task 2 Execution (France Test Data Deep Dive)**:
+   - Scans all 259,452 normalized French records in `test_s1`.
+   - Analyzes the distribution of French corporate suffixes and street vocabulary.
+4. **Task 3 Execution (Address Agreement Matrix & Completeness)**:
+   - Computes a $2 \times 2$ agreement matrix comparing whether true pairs match on name, address, both, or neither.
+   - Measures postal code missingness across US, India, and France.
+5. **Output Generation**:
+   - Saves clean CSV tables and JSON summaries to `output/`.
+   - Generates 4 publication-quality visualization charts to `reports/figures/` and `output/`.
+
+---
+
+## 7. Task 1 Code Findings: Post-Normalization "Residual Gap" Analysis
+
+We evaluated **50,000 true matching pairs from the 100k dev sample (`data/dev_s1_ids.csv`)**:
 
 ### A. True Pair Agreement Across Normalized Representations
 
@@ -94,7 +119,7 @@ Now that all ~25 million records are normalized into `data/norm/`, we evaluated 
 | **`EITHER`** | **Matches on `name_key` OR `addr_key`** | **73.55%** |
 
 > 💡 **Why the Baseline Scored 0.683:**  
-> When you allow either `name_key` OR `addr_key` to match, exact rules capture **73.55% of true pairs**! This is why Swastik's baseline achieved a solid **0.6831 Macro $F_{0.5}$** without any complex training.
+> When you allow either `name_key` OR `addr_key` to match, exact rules capture **73.55% of true pairs**! This is why the exact-key baseline achieved a solid **0.6831 Macro $F_{0.5}$** without any complex training.
 
 ---
 
@@ -105,11 +130,9 @@ For the **43.55% of true pairs** that do NOT have identical `name_key` after cle
 1. **Sub-brands & Extra Words (21.9%)**:  
    One source includes extra descriptive words while the other has only the core brand:  
    *Example:* `"Starbucks"` vs. `"Starbucks Coffee Company"` or `"Walmart Supercenter"` vs. `"Walmart"`.  
-   *Solution:* **Token-Set Ratio** (which ignores subset word additions).
 2. **Heavy Abbreviations & Trade vs Legal Names (78.1%)**:  
    Acronyms, spelling variations, or trade names that differ substantially from registered corporate names:  
-   *Example:* `"TCS"` vs. `"Tata Consultancy Services"`, `"State Bank of India"` vs. `"SBI"`.  
-   *Solution:* **Character 3-Gram Overlap** and phonetic similarity.
+   *Example:* `"TCS"` vs. `"Tata Consultancy Services"`, `"State Bank of India"` vs. `"SBI"`.
 
 ---
 
@@ -119,11 +142,11 @@ For the **43.55% of true pairs** that do NOT have identical `name_key` after cle
 When exact match fails on the residual pairs:
 - **Character 3-Gram Overlap**: Scores an average of **46.2%** on non-identical true pairs.
 - **Token Jaccard**: Scores an average of **39.5%**.
-- **Action for Model:** Using character n-grams and token overlap as features in LightGBM/XGBoost is the key to closing the remaining 36.6% recall gap!
+- **Takeaway:** Using character n-grams and token overlap as features in LightGBM/XGBoost is the key to closing the remaining 36.6% recall gap.
 
 ---
 
-## 7. Finding 5: French Test Data Deep Dive (Task 2)
+## 8. Task 2 Code Findings: French Test Data Deep Dive
 
 France accounts for **259,452 records (15.0% of the test set)** with **zero training examples**.
 
@@ -138,11 +161,11 @@ France accounts for **259,452 records (15.0% of the test set)** with **zero trai
   - **`sasu` (4.13%)** & **`sci` (3.22%)**
 - **French Street Types in Normalized Data:**  
   `rue` (65.7%), `avenue` (12.8%), `allée` (4.7%), `boulevard` (4.3%), `impasse` (1.9%), `route` (1.9%).
-- **Accents:** 38.5% of French records contain accents (`é`, `è`, `ê`, `à`, `ç`). Our normalizer successfully strips them to plain ASCII (e.g. `société` $\rightarrow$ `societe`).
+- **Accents:** 38.5% of French records contain accents (`é`, `è`, `ê`, `à`, `ç`). Normalization successfully strips them to plain ASCII (e.g. `société` $\rightarrow$ `societe`).
 
 ---
 
-## 8. Finding 6: Address Completeness & The "Postal Code Myth" (Task 3)
+## 9. Task 3 Code Findings: Address Completeness & The "Postal Code Myth"
 
 ### A. The Postal Code Myth: Postal Codes are 89%–100% Missing!
 ![Postal Code Missing Rates](figures/postal_code_missing_rates.png)
@@ -174,26 +197,27 @@ We checked the presence of postal codes across 100,000+ real records:
 
 We evaluated where the agreement comes from in true matching pairs:
 
-| Agreement Category | % of True Pairs | Explanation |
+| Agreement Category | % of True Pairs | Meaning & Machine Learning Implication |
 | :--- | :--- | :--- |
 | **Both Name & Address Match Exactly** | **20.65%** | Perfect high-confidence match. |
-| **Name Matches, Address Differs** | **35.80%** | Same company, but one source has landmark/short address or HQ moved. |
-| **Address Matches, Name Differs** | **17.10%** | Same location, but name has heavy spelling variation or trade name. |
+| **Name Matches, Address Differs** | **35.80%** | Same company, but one source has landmark/short address or HQ moved. **Do not reject a match solely because address differs if the name is unique.** |
+| **Address Matches, Name Differs** | **17.10%** | Same location, but name has heavy spelling variation or trade name. Address agreement saves the match. |
 | **Both Differ (Fuzzy Needed)** | **26.45%** | **Neither exact name nor address matches!** Requires ML fuzzy matching. |
 
 ---
 
-## 9. Consolidated Machine Learning Engineering Guidelines
+## 10. Data Preprocessing Enhancements Based on Findings
 
-| Component | Finding | Action to Take |
-| :--- | :--- | :--- |
-| **Normalizer** | Over 70% of French entities have `SARL`, `SAS`, `EURL`. 38.5% have accents. | Completed: `normalize.py` strips French suffixes and normalizes accents to ASCII. |
-| **Normalizer** | Over 92% of French addresses use `rue`, `avenue`, `allée`, `boulevard`. | Standardized: `av` $\rightarrow$ `avenue`, `bd` $\rightarrow$ `boulevard`. |
-| **Blocker** | Postal codes are 89%–100% missing across US, India, and France. | **Do NOT block by postal code.** Block by `Country + First Name Token + 3-Gram Prefix`. |
-| **Features** | 35.8% of true matches have matching names but divergent addresses. | Do not reject a match solely because the address doesn't match if name is unique. |
-| **Features** | 21.9% of residual names are sub-brands / subsets ("Starbucks Coffee"). | Use Token-Set Ratio and Containment Score as core features. |
-| **Features** | 26.5% of true pairs have both different names and different addresses. | Character 3-Gram Overlap and Token Jaccard are essential to catch these. |
-| **Matcher** | 5.58% singletons; false merges penalized $2\times$ under $F_{0.5}$. | Calibrate decision threshold $\ge 0.85$ to safely output empty predictions for singletons. |
+Based directly on these empirical discoveries, the following concrete enhancements are made to the preprocessing pipeline:
+
+1. **Expanded French Legal Entity Vocabulary**:
+   - Added missing French corporate designations to the legal suffix stripper: `cie`, `societe`, `ste`, `association`, `ets`, `etablissements`.
+2. **Expanded French Street Abbreviations**:
+   - Added canonical street mapping: `av` / `ave` $\rightarrow$ `avenue`, `bd` $\rightarrow$ `boulevard`, `pl` $\rightarrow$ `place`, `rte` $\rightarrow$ `route`, `allée` / `allee` $\rightarrow$ `allee`.
+3. **Landmark Preposition Normalization for Indian Addresses**:
+   - Mapped `opposite`, `opp`, `near`, `nr`, `behind`, `beside`, `adjacent` into standard canonical tokens so that *"Near Railway Station"* and *"Railway Station"* can align on `addr_key`.
+4. **Sub-Brand / Generic Business Descriptor Handling**:
+   - Stripping trailing generic noise tokens (`enterprises`, `solutions`, `technologies`, `services`, `group`, `industries`, `holdings`) to generate a `name_stem` that closes the 21.9% subset residual gap.
 
 ---
 

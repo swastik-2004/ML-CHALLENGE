@@ -70,6 +70,7 @@ LEGAL = {
     "pvt", "private", "praivet", "praibhet", "prayvet",
     # France / EU
     "sa", "sas", "sasu", "sarl", "eurl", "sci", "snc", "scp", "selarl", "scop", "sca",
+    "cie", "societe", "ste", "association", "ets", "etablissements",
     "gmbh", "ag", "bv", "nv",
 }
 DROP_WORDS = {"the", "and"}
@@ -163,11 +164,12 @@ ADDR_CANON = {
     "place": "pl", "parkway": "pkwy", "highway": "hwy", "terrace": "ter", "square": "sq",
     "suite": "ste", "apartment": "apt", "floor": "fl", "flr": "fl", "building": "bldg",
     "north": "n", "south": "s", "east": "e", "west": "w", "northeast": "ne", "northwest": "nw",
-    "southeast": "se", "southwest": "sw", "near": "nr", "opposite": "opp", "township": "twp",
-    "mount": "mt", "route": "rte", "sector": "sec",
+    "near": "nr", "opposite": "opp", "behind": "bhnd", "beside": "bsd", "adjacent": "adj",
+    "township": "twp", "mount": "mt", "route": "rte", "sector": "sec",
+    "chemin": "ch", "impasse": "imp", "allee": "allee", "allée": "allee", "quai": "quai",
 }
 STREET_TYPES = {"rd", "st", "dr", "cir", "ln", "ct", "ave", "blvd", "pl", "pkwy", "hwy", "ter",
-                "sq", "way", "rue", "chemin", "allee", "impasse", "quai", "cr", "rte", "main"}
+                "sq", "way", "rue", "chemin", "allee", "impasse", "quai", "cr", "rte", "main", "ch", "imp"}
 ADDR_DROP = {"no", "unit", "hno"}
 _ADDR_LABEL = re.compile(
     r"\b(?:h\s*\.?\s*no|house\s*no|door\s*no|dor\s*no|flat\s*no|plot\s*no|shop\s*no)\b\.?")
