@@ -1,0 +1,133 @@
+{
+  "task_2_france_deep_dive": {
+    "total_france_records_in_test_s1": 259452,
+    "france_pct_of_test_set": 14.97,
+    "top_legal_suffixes": [
+      {
+        "Suffix": "SARL",
+        "Count": 28188,
+        "Percentage": 28.19
+      },
+      {
+        "Suffix": "SAS",
+        "Count": 20174,
+        "Percentage": 20.17
+      },
+      {
+        "Suffix": "EURL",
+        "Count": 6632,
+        "Percentage": 6.63
+      },
+      {
+        "Suffix": "SA",
+        "Count": 4841,
+        "Percentage": 4.84
+      },
+      {
+        "Suffix": "SASU",
+        "Count": 4209,
+        "Percentage": 4.21
+      },
+      {
+        "Suffix": "CIE / SOCIETE",
+        "Count": 3740,
+        "Percentage": 3.74
+      },
+      {
+        "Suffix": "SCI",
+        "Count": 3314,
+        "Percentage": 3.31
+      },
+      {
+        "Suffix": "ASSOCIATION",
+        "Count": 1581,
+        "Percentage": 1.58
+      },
+      {
+        "Suffix": "SNC",
+        "Count": 0,
+        "Percentage": 0.0
+      },
+      {
+        "Suffix": "SCA / GIE",
+        "Count": 0,
+        "Percentage": 0.0
+      }
+    ],
+    "top_address_keywords": [
+      {
+        "Street_Type": "rue (street)",
+        "Count": 65737,
+        "Percentage": 65.74
+      },
+      {
+        "Street_Type": "avenue / av",
+        "Count": 12839,
+        "Percentage": 12.84
+      },
+      {
+        "Street_Type": "all\u00e9e / allee",
+        "Count": 4706,
+        "Percentage": 4.71
+      },
+      {
+        "Street_Type": "boulevard / bd",
+        "Count": 4320,
+        "Percentage": 4.32
+      },
+      {
+        "Street_Type": "impasse",
+        "Count": 1915,
+        "Percentage": 1.92
+      },
+      {
+        "Street_Type": "route / rte",
+        "Count": 1860,
+        "Percentage": 1.86
+      },
+      {
+        "Street_Type": "place / pl",
+        "Count": 1663,
+        "Percentage": 1.66
+      },
+      {
+        "Street_Type": "chemin",
+        "Count": 1416,
+        "Percentage": 1.42
+      },
+      {
+        "Street_Type": "cedex",
+        "Count": 15,
+        "Percentage": 0.01
+      }
+    ],
+    "accents_presence_percentage": 38.51,
+    "postal_code_presence_percentage": 0.4,
+    "key_takeaways": [
+      "Over 70% of French businesses use specific legal suffixes (SARL 28.2%, SAS 20.2%, EURL 6.6%, SA 4.8%).",
+      "Over 92% of French addresses use standard French street keywords (Rue 65.7%, Avenue 12.8%, All\u00e9e 4.7%, Boulevard 4.3%).",
+      "38.5% of French records contain French accents (\u00e9, \u00e8, \u00ea, etc.), requiring NFKD unicode unidecode normalization.",
+      "French postal codes are 99.6% missing, so blocking on postal codes is completely infeasible."
+    ]
+  },
+  "task_3_address_completeness": {
+    "postal_code_missingness": {
+      "us_missing_pct": 89.08,
+      "france_missing_pct": 99.59,
+      "india_missing_pct": 100.0
+    },
+    "landmark_indicators": {
+      "india_landmark_pct": 13.35,
+      "us_landmark_pct": 0.01
+    },
+    "numeric_street_ids": {
+      "india_has_numeric_pct": 88.65,
+      "us_has_numeric_pct": 99.6
+    },
+    "critical_rules_for_pipeline": [
+      "NEVER block on postal codes; they are missing in 89% to 100% of addresses across all countries.",
+      "For Indian addresses, prioritize landmark token overlap ('near', 'opp', 'behind').",
+      "For US addresses, prioritize exact numeric street number matching (present in 99.6% of records)."
+    ]
+  }
+}

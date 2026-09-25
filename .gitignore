@@ -19,9 +19,12 @@ data/*.zip
 *.tsv
 *.csv
 
-# Exceptions: Allow gitkeep in data/output if needed
+# Exceptions: Allow gitkeep and EDA summary files in data/output/reports
 !data/.gitkeep
 !output/.gitkeep
+!output/*.csv
+!reports/*.csv
+!output/*.json
 
 # --- Submission and Large Output Files ---
 output/*.tsv

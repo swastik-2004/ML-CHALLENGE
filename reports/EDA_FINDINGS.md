@@ -1,7 +1,7 @@
 # Exploratory Data Analysis (EDA) Findings & Visualizations
 
 > **Business Entity Resolution — Amazon ML Challenge 2026**  
-> *A plain-English summary of what the data looks like, what patterns exist, and what strategies will work best.*
+> *A plain-English summary of what the data looks like, empirical discoveries from raw datasets, and practical modeling guidelines.*
 
 ---
 
@@ -79,35 +79,84 @@ The dataset is massive. Here are the exact numbers calculated directly from the 
 
 ---
 
-## 6. Finding 4: Name and Address Text Patterns
+## 6. Finding 4: French Test Data Deep Dive (Task 2)
 
-![Text Length Analysis](figures/text_length_analysis.png)
+France represents **259,452 records** in the test set. An empirical analysis of French entities in `test_source1.tsv` reveals major structural differences from US and Indian data:
 
-![Common Keywords](figures/address_token_patterns.png)
+### A. French Corporate Suffixes (Over 70% of French businesses!)
+![French Suffixes](figures/france_legal_suffixes.png)
 
-### What the data reveals:
-1. **Name Lengths:**
-   - Most business names are between **10 to 30 characters long** (2 to 4 words).
-   - Names frequently contain abbreviations: `Inc`, `LLC`, `Corp`, `Corporation`, `Pvt`, `Private`, `Ltd`, `Limited`, `Co`, `Company`.
-   - Often one source writes `"Acme Corp"` while another writes `"Acme Corporation"` or `"Acme Pvt Ltd"`.
+- **`SARL` (28.19%)** — *Société à Responsabilité Limitée* (LLC equivalent)
+- **`SAS` (20.17%)** — *Société par Actions Simplifiée*
+- **`EURL` (6.63%)** — *Entreprise Unipersonnelle à Responsabilité Limitée*
+- **`SA` (4.84%)** — *Société Anonyme*
+- **`SASU` (4.21%)** & **`SCI` (3.31%)**
+- **Action for Normalizer:** English cleaners only strip `Inc`, `Corp`, `LLC`, `Pvt Ltd`. If French suffixes (`sarl`, `sas`, `eurl`, `sa`, `sci`) are not stripped/normalized, **over 70% of French business names will fail to match**!
 
-2. **Address Variations:**
-   - Most addresses are between **30 to 80 characters long** (5 to 15 words).
-   - In the US, addresses follow street/city/state/ZIP patterns (e.g., `St`, `Ave`, `Rd`, `Blvd`).
-   - In India, addresses frequently use landmarks (`Near Bus Stand`, `Opposite Railway Station`) and 6-digit PIN codes.
-   - In France, addresses use French terms (`Rue`, `Avenue`, `Boulevard`, `Cedex`) with 5-digit postal codes.
+### B. French Street Vocabulary
+![French Address Keywords](figures/france_address_keywords.png)
+
+- **`rue` (65.74%)**: Over two-thirds of French addresses use the word `rue` (street).
+- **`avenue` / `av` (12.84%)**, **`allée` (4.71%)**, **`boulevard` / `bd` (4.32%)**, **`impasse` (1.92%)**, **`route` (1.86%)**.
+- **Action for Normalizer:** French abbreviations must be expanded: `av` $\rightarrow$ `avenue`, `bd` $\rightarrow$ `boulevard`, `pl` $\rightarrow$ `place`, `rte` $\rightarrow$ `route`.
+
+### C. French Accents & Character Encoding
+- **38.51% (nearly 100,000 records)** contain French accent characters (`é`, `è`, `ê`, `à`, `ç`, `ô`, `î`).
+- If one source writes `"Société"` and another writes `"Societe"`, exact string matching fails.
+- **Action for Normalizer:** Must apply Unicode NFKD / unidecode stripping to normalize accented characters to plain ASCII letters.
 
 ---
 
-## 7. Simple & Practical Action Plan for Modeling
+## 7. Finding 5: Address Completeness & The "Postal Code Myth" (Task 3)
 
-| Stage | What To Do | Why It Works |
+### A. Postal Codes are Missing in 89% to 100% of Records!
+![Postal Code Missing Rates](figures/postal_code_missing_rates.png)
+
+We checked the presence of postal codes across 100,000+ real records:
+- **US (5-digit ZIP):** Only **10.92% present** (**89.08% MISSING**).
+- **France (5-digit Postal):** Only **0.40% present** (**99.60% MISSING**).
+- **India (6-digit PIN):** **0.00% present** (**100.00% MISSING**).
+
+> 🚨 **CRITICAL DISCOVERY FOR CANDIDATE BLOCKING:**  
+> Postal codes **CANNOT** be used as a primary candidate blocking key.  
+> Attempting to block candidates by postal code will **discard 90% to 100% of true matches** right at the entrance of the pipeline.  
+> **Rule:** Candidate blocking must rely on `Country + Clean Name Tokens / 3-Gram Prefixes`, NOT postal codes.
+
+---
+
+### B. Address Formatting: India vs. US
+![Landmark Comparison](figures/address_landmark_comparison.png)
+
+- **Landmark Reliance in India:**
+  - **13.67%** of Indian addresses explicitly use landmark navigation keywords: `near`, `opp` / `opposite`, `behind`, `beside`, `nr`.
+  - In the US, landmark keywords appear in only **0.02%** of addresses.
+  - **1.72%** of Indian addresses are purely landmark-based with **zero numeric identifiers** (e.g. *"Opposite Bus Stand, Station Road"*).
+- **Numeric Identifiers:**
+  - US addresses are strictly numbered: **99.60%** contain street numbers (`11237 Lanewood Cir`).
+  - Indian addresses have numbers in **88.65%** of records.
+- **Action:** For Indian addresses, similarity metrics must give credit for landmark token overlap and not penalize addresses lacking house numbers.
+
+---
+
+### C. True Pair Address Discrepancies (Multi-Branch & Move Risks)
+Analyzing true matching pairs from `train_ground_truth.tsv`:
+- **62.5%** of true matching pairs have strong address overlap (Jaccard similarity $> 0.50$).
+- **37.5%** of true pairs have **partial or divergent addresses** (Jaccard $\le 0.50$).
+  * *Reason:* One record might only list `"Lanewood Cir"` while another lists `"11237 Lanewood Cir, Dallas, TX"`. Multi-branch franchises also share names across different cities.
+- **Rule:** High name similarity + High address similarity = **Definite Match**. If the name is generic (e.g. "Shree Ganesh Traders"), address agreement is mandatory to avoid false merges.
+
+---
+
+## 8. Summary of Machine Learning Guidelines
+
+| Component | Finding | Action to Take |
 | :--- | :--- | :--- |
-| **1. Text Cleaning** | Standardize abbreviations (`corp` $\rightarrow$ `corporation`, `rd` $\rightarrow$ `road`), lowercase, remove special punctuation. | Bridges the gap between variations like `"Acme Corp."` and `"Acme Corporation"`. |
-| **2. Blocking (Candidate Search)** | Group entities by `Country` + `First Name Word` or `3-Character Prefix`. | Cuts down comparisons from 17 trillion to ~30-50 high-quality candidates per entity. |
-| **3. Feature Engineering** | Compute similarity scores: Token Jaccard, Character 3-Gram Overlap, Levenshtein Edit Distance, and Postal Code Match. | Captures both typographical errors and word order transpositions. |
-| **4. Precision Tuning** | Calibrate decision threshold to maximize $F_{0.5}$ (aim for high precision $\ge 0.85$). | $F_{0.5}$ rewards precision twice as much as recall; avoiding wrong merges is key to winning. |
+| **Normalizer** | Over 70% of French entities have `SARL`, `SAS`, `EURL`. 38.5% have accents. | Add French suffix normalization and Unicode NFKD accent stripping. |
+| **Normalizer** | Over 92% of French addresses use `rue`, `avenue`, `allée`, `boulevard`. | Standardize French street types (`av` $\rightarrow$ `avenue`, `bd` $\rightarrow$ `boulevard`). |
+| **Blocker** | Postal codes are 89%–100% missing across US, India, and France. | **Do NOT block by postal code.** Block by `Country + First Name Token + 3-Gram Prefix`. |
+| **Features** | 13.7% of Indian records use landmark navigation phrases. | Token overlap feature that rewards landmark words (`opposite`, `near`, `behind`). |
+| **Matcher** | 5.58% singletons; false merges penalized $2\times$ under $F_{0.5}$. | Calibrate decision threshold $\ge 0.85$ to safely output empty predictions for singletons. |
 
 ---
 
-*All visualization figures are stored under [`reports/figures/`](./figures/).*
+*All raw summary data tables and generated charts are saved under [`output/`](../output/) and [`reports/figures/`](./figures/).*
