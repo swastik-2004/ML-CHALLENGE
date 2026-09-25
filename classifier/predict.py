@@ -20,7 +20,7 @@ from .config import (
     TARGET_SOURCE_COL,
     DEFAULT_THRESHOLD,
 )
-from .feature_schema import validate_features, get_feature_columns
+from .feature_schema import validate_features, get_feature_columns, standardize_columns
 from .model import ClassifierModel
 from .utils import (
     setup_logger,
@@ -79,7 +79,7 @@ def predict(
 
     # 3. Load Pairwise Features
     logger.info(f"[Step 2/5] Loading test candidate pairwise features from: {feature_data_path}")
-    df_features_raw = load_dataframe(feature_data_path)
+    df_features_raw = standardize_columns(load_dataframe(feature_data_path))
 
     # 4. Validate Feature Schema
     logger.info("[Step 3/5] Validating feature schema...")

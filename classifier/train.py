@@ -23,7 +23,7 @@ from .config import (
     VALIDATION_SPLIT,
     RANDOM_SEED,
 )
-from .feature_schema import validate_features, get_feature_columns
+from .feature_schema import validate_features, get_feature_columns, standardize_columns
 from .model import ClassifierModel
 from .threshold import optimize_threshold
 from .utils import (
@@ -102,7 +102,7 @@ def train(
     # Ensure the feature file exists at `feature_data_path` or pass the dataframe directly.
     # -------------------------------------------------------------------------
     logger.info(f"[Step 1/6] Loading pairwise feature dataset from: {path}")
-    df = load_dataframe(path)
+    df = standardize_columns(load_dataframe(path))
 
     # -------------------------------------------------------------------------
     # Step 2: Validate Schema

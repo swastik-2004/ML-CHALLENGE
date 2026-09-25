@@ -20,6 +20,24 @@ class FeatureSchemaError(ValueError):
     pass
 
 
+ALIAS_MAP = {
+    "s1_id": "source1_entity_id",
+    "cand_id": "target_entity_id",
+    "target_id": "target_entity_id",
+    "label": "is_match",
+    "match": "is_match",
+    "y": "is_match",
+}
+
+
+def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Standardizes incoming column names to canonical schema names."""
+    out = df.rename(columns={k: v for k, v in ALIAS_MAP.items() if k in df.columns and v not in df.columns})
+    if "target_source" not in out.columns and "target_entity_id" in out.columns:
+        out["target_source"] = out["target_entity_id"].astype(str).str.slice(0, 2)
+    return out
+
+
 def validate_required_columns(
     df: pd.DataFrame, required_cols: Optional[List[str]] = None
 ) -> None:
@@ -67,11 +85,13 @@ def get_feature_columns(
         feature_cols = FEATURE_COLUMNS
 
     if feature_cols:
-        validate_required_columns(df, feature_cols)
-        return feature_cols
+        present_features = [c for c in feature_cols if c in df.columns]
+        if present_features:
+            logger.info(f"Resolved {len(present_features)} active feature columns out of {len(feature_cols)} configured.")
+            return present_features
 
     # Fallback: Infer feature columns as non-identifier numeric columns
-    non_feature_cols = set(REQUIRED_ID_COLUMNS)
+    non_feature_cols = set(REQUIRED_ID_COLUMNS) | {"is_match", "label", "y", "match"}
     inferred_features = [
         col for col in df.columns
         if col not in non_feature_cols and pd.api.types.is_numeric_dtype(df[col])

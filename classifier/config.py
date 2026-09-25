@@ -38,9 +38,25 @@ LABEL_COL: str = "is_match"
 # Required identifier columns expected in the pairwise dataframe
 REQUIRED_ID_COLUMNS: List[str] = [S1_ID_COL, TARGET_ID_COL, TARGET_SOURCE_COL]
 
-# TODO (Pairwise Developer): Update this list with final pairwise feature column names.
-# Example placeholder: ["name_jaccard", "address_levenshtein", "postal_match"]
-FEATURE_COLUMNS: List[str] = []
+# Pairwise Feature Columns (matching src/features/pair_features.py)
+FEATURE_COLUMNS: List[str] = [
+    # Name Similarity Features
+    "name_key_eq", "name_compact_eq", "name_ratio", "name_token_sort",
+    "name_token_set", "name_partial", "name_jw", "name_tok_jacc",
+    "name_3gram_jacc", "name_compact_ratio", "name_len_ratio", "name_ntok_ratio",
+    "legal_agree", "cand_is_domain", "script_diff", "cand_non_latin",
+    # Address Similarity Features
+    "addr_key_eq", "addr_ratio", "addr_token_set", "addr_token_sort",
+    "addr_tok_jacc", "addr_len_ratio", "house_eq", "house_suffix", "house_sim",
+    "numbers_jacc", "state_agree", "postal_agree", "landmark_jacc", "addr_missing",
+    # Source Feature
+    "cand_source",
+    # Context & Ranking Features
+    "name_token_set_rank", "name_token_set_gap",
+    "addr_token_set_rank", "addr_token_set_gap",
+    "name_ratio_rank", "name_ratio_gap",
+    "cand_n_s1", "cand_rank_for_target"
+]
 
 # -----------------------------------------------------------------------------
 # Model Hyperparameters & Training Settings
