@@ -1,0 +1,3 @@
+missed true (FN)                 n= 3,738  candidate address empty 17.7% | S1 address empty 0.0%
+wrong accepted (FP)              n= 1,237  candidate address empty 13.6% | S1 address empty 0.0%
+correct accepted (TP, sample)    n=20,000  candidate address empty 2.0% | S1 address empty 0.0%
