@@ -229,7 +229,7 @@ def train(
     # -------------------------------------------------------------------------
     logger.info("[Step 4/6] Fitting classifier model...")
     model_wrapper = ClassifierModel(params=config_override)
-    model_wrapper.fit(X_train, y_train)
+    model_wrapper.fit(X_train, y_train, X_val, y_val)   # early stopping on the validation S1s
 
     # -------------------------------------------------------------------------
     # Step 5: Threshold Optimization for Macro F0.5

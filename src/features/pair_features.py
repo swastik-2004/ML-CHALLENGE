@@ -145,9 +145,101 @@ def _landmarks(addr: str) -> str:
     return " ".join(out)
 
 
+
+# ----------------------------------------------------------------------------- v2 features
+# Targeted at the errors seen in missed / mis-scored dev pairs (26 Sep analysis):
+#  * rarity: sharing "tarabanahalli" (28 records) is strong, sharing "nagar" (590k) is not
+#  * digit damage: 8162 vs 162, 40800 vs 4080; house numbers may also sit anywhere in the address
+#  * transliterated names: "sky technology" vs "skai teknoloji"
+import re as _re
+
+_HONORIFICS = {"sri", "shri", "sree", "shree", "smt", "m", "s", "ms"}
+_SK_PAIRS = (("ph", "f"), ("ck", "k"), ("ch", "k"), ("sh", "s"), ("th", "t"), ("kh", "k"),
+             ("gh", "g"), ("bh", "b"), ("dh", "d"), ("jh", "g"))
+_SK_TABLE = str.maketrans({"c": "k", "q": "k", "j": "g", "z": "s", "w": "v", "x": "ks"})
+_VOWELS = _re.compile(r"[aeiouy]")
+_REPEAT = _re.compile(r"(.)\1+")
+
+
+def _skel_token(t: str) -> str:
+    for a, b in _SK_PAIRS:
+        t = t.replace(a, b)
+    t = _VOWELS.sub("", t.translate(_SK_TABLE))
+    return _REPEAT.sub(r"\1", t)
+
+
+def name_skeleton(name: str) -> str:
+    """Consonant skeleton of a name ('skai teknoloji' -> 'sk tknlg'); honorific prefixes dropped."""
+    toks = [t for t in (name or "").split() if not t.isdigit()]
+    while toks and toks[0] in _HONORIFICS:
+        toks = toks[1:]
+    return " ".join(k for k in (_skel_token(t) for t in toks) if k)
+
+
+def _near_number(a: str, b: str) -> bool:
+    """Same number allowing one dropped / changed digit (length >= 3)."""
+    if a == b:
+        return True
+    if min(len(a), len(b)) < 3:
+        return False
+    return Levenshtein.distance(a, b, score_cutoff=1) <= 1
+
+
+def _v2_features(L, R, split, f):
+    from .idf import idf_weight, load_idf
+    tabs = load_idf(split)
+    n = len(L)
+    out = {k: np.full(n, NAN, dtype=F32) for k in (
+        "addr_idf_jacc", "addr_rare_shared", "addr_idf_max_shared", "name_idf_jacc",
+        "name_rare_shared", "house_in_numbers", "numbers_near_frac", "name_skel_ratio", "name_skel_eq")}
+    ctry = L.country.values
+    la, ra = L.addr_norm.values, R.addr_norm.values
+    ln, rn = L.name_key.values, R.name_key.values
+    lh, rh = L.house_no.values, R.house_no.values
+    lnum, rnum = L.numbers.values, R.numbers.values
+    lcore, rcore = L.name_core.values, R.name_core.values
+    for i in range(n):
+        c = ctry[i]
+        # address rarity
+        at, an = tabs.get(("addr", c), ({}, 1))
+        if la[i] and ra[i]:
+            x, y = set(la[i].split()), set(ra[i].split())
+            w = {t: idf_weight(at.get(t, 1), an) for t in x | y}
+            inter = x & y
+            out["addr_idf_jacc"][i] = sum(w[t] for t in inter) / sum(w.values())
+            out["addr_rare_shared"][i] = sum(1 for t in inter if not t.isdigit() and len(t) >= 4
+                                            and at.get(t, 1) <= 50)
+            out["addr_idf_max_shared"][i] = max((w[t] for t in inter if not t.isdigit()), default=0.0)
+        # name rarity
+        nt, nn = tabs.get(("name", c), ({}, 1))
+        if ln[i] and rn[i]:
+            x, y = set(ln[i].split()), set(rn[i].split())
+            w = {t: idf_weight(nt.get(t, 1), nn) for t in x | y}
+            inter = x & y
+            out["name_idf_jacc"][i] = sum(w[t] for t in inter) / sum(w.values())
+            out["name_rare_shared"][i] = sum(1 for t in inter if nt.get(t, 1) <= 50)
+        # numbers anywhere in the address, tolerant to one damaged digit
+        a_nums = lnum[i].split() if lnum[i] else []
+        b_nums = rnum[i].split() if rnum[i] else []
+        if b_nums and (lh[i] or rh[i]):
+            hits = [h for h in (lh[i], rh[i]) if h]
+            other = [b_nums, a_nums]
+            out["house_in_numbers"][i] = float(any(any(_near_number(h, o) for o in other[k])
+                                                   for k, h in enumerate(hits) if other[k]))
+        big = [a for a in a_nums if len(a) >= 3]
+        if big and b_nums:
+            out["numbers_near_frac"][i] = sum(any(_near_number(a, b) for b in b_nums) for a in big) / len(big)
+        # transliteration-proof name similarity
+        sa, sb = name_skeleton(lcore[i]), name_skeleton(rcore[i])
+        if sa and sb:
+            out["name_skel_ratio"][i] = fuzz.token_sort_ratio(sa, sb) / 100.0
+            out["name_skel_eq"][i] = float(sa == sb)
+    f.update(out)
+
 # ----------------------------------------------------------------------------- features
-def compute_features(pairs: pd.DataFrame, rec: pd.DataFrame) -> pd.DataFrame:
-    """Row-aligned feature frame for pairs[s1_id, cand_id] using records `rec`."""
+def compute_features(pairs: pd.DataFrame, rec: pd.DataFrame, split: str | None = None) -> pd.DataFrame:
+    """Row-aligned feature frame for pairs[s1_id, cand_id] using records `rec`.
+    With `split`, also the v2 rarity / number / skeleton features (needs data/cache/idf_{split}.parquet)."""
     L = rec.reindex(pairs["s1_id"].values)
     R = rec.reindex(pairs["cand_id"].values)
     if L.name_key.isna().any() or R.name_key.isna().any():
@@ -187,6 +279,8 @@ def compute_features(pairs: pd.DataFrame, rec: pd.DataFrame) -> pd.DataFrame:
     f["addr_missing"] = ((L.addr_empty.values == 1) | (R.addr_empty.values == 1)).astype(F32)
     # --- source
     f["cand_source"] = np.array([float(c[1]) for c in pairs["cand_id"].values], dtype=F32)
+    if split is not None:
+        _v2_features(L, R, split, f)
     return pd.DataFrame(f, index=pairs.index)
 
 
@@ -209,12 +303,12 @@ def add_context_features(df: pd.DataFrame,
 
 def _task(args):
     """Worker entry point (top-level so Windows 'spawn' workers can import it)."""
-    part, sub = args
-    return pd.concat([part, compute_features(part, sub).reset_index(drop=True)], axis=1)
+    part, sub, split = args
+    return pd.concat([part, compute_features(part, sub, split).reset_index(drop=True)], axis=1)
 
 
 def build(split: str, pairs: pd.DataFrame, chunk: int = 250_000, context: bool = True,
-          workers: int = 4) -> pd.DataFrame:
+          workers: int = 4, v2: bool = True) -> pd.DataFrame:
     """Features for all pairs. Chunks are processed in parallel; each worker only receives the
     records its chunk needs. Tasks are sent in small batches to keep memory flat."""
     from multiprocessing import get_context
@@ -225,7 +319,7 @@ def build(split: str, pairs: pd.DataFrame, chunk: int = 250_000, context: bool =
     def job(i):
         part = pairs.iloc[i:i + chunk].reset_index(drop=True)
         ids = pd.unique(np.concatenate([part.s1_id.values, part.cand_id.values]))
-        return part, rec.loc[ids]
+        return part, rec.loc[ids], (split if v2 else None)
 
     starts = list(range(0, len(pairs), chunk))
     out = []

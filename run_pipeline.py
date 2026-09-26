@@ -39,11 +39,15 @@ def build_stages(a):
         ("folds", ["-m", "src.folds"]),
         ("normalize", ["-m", "src.normalize", *workers]),
         # --- train side: learn the classifier + threshold on the dev S1s
+        ("idf_train", ["-m", "src.features.idf", "--split", "train"]),
+        ("idf_test", ["-m", "src.features.idf", "--split", "test"]),
+        ("train_ids", ["-m", "src.train_ids", "--n", str(a.train_s1)]),
         ("blocker_train", ["-m", "src.blocking.blocker", "--split", "train", "--skip-tsv", *cap]),
         ("features_train", ["-m", "src.features.pair_features", "--split", "train",
-                            "--s1-ids", "data/dev_s1_ids.csv", *workers]),
+                            "--s1-ids", "data/train_s1_ids.csv", *workers]),
         ("classifier_train", ["-m", "classifier.train",
-                              "--features-path", "data/feats/train_subset.parquet"]),
+                              "--features-path", "data/feats/train_subset.parquet",
+                              "--eval-s1-ids", "data/train_s1_ids.csv"]),
         # --- test side: candidates (+ candidate_pairs.tsv from the same cache the classifier
         # scores) -> features + classifier scoring in S1 batches -> matching_results.tsv
         ("blocker_test", ["-m", "src.blocking.blocker", "--split", "test", *cap]),
@@ -64,6 +68,8 @@ def main():
     ap.add_argument("--workers", type=int, default=6, help="parallel workers for normalise / features")
     ap.add_argument("--max-candidates", type=int, default=20,
                     help="blocker cap per S1, used for both train and test (blocker default: 20)")
+    ap.add_argument("--train-s1", type=int, default=300_000,
+                    help="S1s to train on (100k dev + extra train S1s); features scale with this")
     ap.add_argument("--list", action="store_true", help="list stage names and exit")
     ap.add_argument("--dry-run", action="store_true", help="print commands without running them")
     a = ap.parse_args()
