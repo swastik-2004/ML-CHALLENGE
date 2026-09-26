@@ -52,6 +52,34 @@ def test_crowding_limit():
     assert pairs.iloc[0]["s1"] == 3  # only 'unique' matched
 
 
+def test_crowded_key_is_narrowed_not_dropped():
+    # 'common' is shared by 3 S1 rows (> max_s1=2): without narrowing it is dropped entirely;
+    # narrowed by a discriminator (e.g. a rare address token) the specific sub-keys still match
+    s1_vals = np.array(["common", "common", "common"])
+    tg_vals = np.array(["common", "common"])
+    s1_disc = np.array(["glitterati", "makhmalabad", ""])
+    tg_disc = np.array(["glitterati", "creekedge"])
+    both_country = np.zeros(5, dtype=int)
+    plain = index_rule(s1_vals, tg_vals, both_country, 3, max_s1=2, max_tg=5)
+    assert len(plain) == 0
+    narrowed = index_rule(s1_vals, tg_vals, both_country, 3, max_s1=2, max_tg=5,
+                          narrow=[(s1_disc, tg_disc)])
+    assert list(zip(narrowed.s1, narrowed.tg)) == [(0, 0)]   # only 'common|glitterati' matches
+    assert narrowed.blk.tolist() == [1]
+
+
+def test_soundex_and_rare_tokens():
+    from src.blocking.blocker import soundex, rare_address_tokens
+    assert soundex("shiva") == soundex("shiv") == "s100"
+    assert soundex("") == ""
+    addr = np.array(["12 main road glitterati pune", "4 main road glitterati pune",
+                     "9 main road pune", "main road pune"], dtype=object)
+    r1, r2 = rare_address_tokens(addr)
+    assert r1[0] == "glitterati" and r1[1] == "glitterati"     # rarest token seen >= 2 times
+    assert r2[0] == "glitterati main"
+    assert r1[3] == "main"                                       # ties broken alphabetically
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

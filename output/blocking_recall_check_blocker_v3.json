@@ -1,0 +1,39 @@
+{
+  "tag": "blocker_v3",
+  "split": "train",
+  "dev_entities": 100000,
+  "dev_true_pairs": 345968,
+  "cache_cap": 20,
+  "by_cap": {
+    "15": {
+      "recall_pct": 93.8,
+      "oracle_macro_f05": 0.9781,
+      "mean_candidates": 14.45,
+      "p50_candidates": 15,
+      "p95_candidates": 15,
+      "max_candidates": 15,
+      "coverage_pct": 100.0,
+      "s1_true_but_no_true_candidate": 622,
+      "missed_pairs": 21462,
+      "missed_cut_by_cap_pct": 18.0,
+      "missed_not_generated_pct": 82.0,
+      "uncapped_recall_pct": 94.91,
+      "uncapped_mean_candidates": 42.51
+    },
+    "20": {
+      "recall_pct": 94.25,
+      "oracle_macro_f05": 0.9795,
+      "mean_candidates": 18.74,
+      "p50_candidates": 20,
+      "p95_candidates": 20,
+      "max_candidates": 20,
+      "coverage_pct": 100.0,
+      "s1_true_but_no_true_candidate": 593,
+      "missed_pairs": 19895,
+      "missed_cut_by_cap_pct": 11.5,
+      "missed_not_generated_pct": 88.5,
+      "uncapped_recall_pct": 94.91,
+      "uncapped_mean_candidates": 42.51
+    }
+  }
+}
