@@ -55,7 +55,7 @@ FEATURE_COLUMNS: List[str] = [
     "name_token_set_rank", "name_token_set_gap",
     "addr_token_set_rank", "addr_token_set_gap",
     "name_ratio_rank", "name_ratio_gap",
-    "cand_n_s1", "cand_rank_for_target"
+    "cand_n_s1", "cand_rank_blk"  # measured on the full split (src/features/global_context.py)
 ]
 
 # -----------------------------------------------------------------------------

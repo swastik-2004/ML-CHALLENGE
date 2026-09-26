@@ -192,8 +192,8 @@ def compute_features(pairs: pd.DataFrame, rec: pd.DataFrame) -> pd.DataFrame:
 
 def add_context_features(df: pd.DataFrame,
                          score_cols=("name_token_set", "addr_token_set", "name_ratio")) -> pd.DataFrame:
-    """Per-S1 and per-candidate context. Only meaningful on REAL blocker output: the candidate
-    distribution at train time must match test time, so compute on both the same way."""
+    """Per-S1 context (all pairs of an S1 must be in df). Only meaningful on REAL blocker output:
+    the candidate distribution at train time must match test time, so compute on both the same way."""
     df = df.copy()
     df["n_cands"] = df.groupby("s1_id", sort=False)["cand_id"].transform("size").astype(F32)
     for c in score_cols:
@@ -202,12 +202,8 @@ def add_context_features(df: pd.DataFrame,
             g = s.groupby(df["s1_id"], sort=False)
             df[f"{c}_rank"] = g.rank(ascending=False, method="min").astype(F32)
             df[f"{c}_gap"] = (g.transform("max") - s).astype(F32)
-    present_scores = [c for c in score_cols if c in df.columns]
-    q = df[present_scores].fillna(0.0).mean(axis=1) if present_scores else pd.Series(0.0, index=df.index)
-    n_s1_total = max(1, df["s1_id"].nunique())
-    df["cand_n_s1"] = (df.groupby("cand_id", sort=False)["s1_id"].transform("size") / n_s1_total).astype(F32)
-    df["cand_rank_for_target"] = q.groupby(df["cand_id"], sort=False).rank(
-        ascending=False, method="min").astype(F32)
+    # Candidate-level context (cand_n_s1, cand_rank_blk) is NOT computed here: it must be measured
+    # on the full split, not on the subset passed in. See src/features/global_context.py.
     return df
 
 
@@ -259,7 +255,11 @@ if __name__ == "__main__":
     ap.add_argument("--workers", type=int, default=4)
     a = ap.parse_args()
     src = a.pairs or WORK_DIR / "cache" / f"candidate_pairs_{a.split}.parquet"
-    p = to_pair_ids(pd.read_parquet(src))
+    if a.pairs:
+        p = to_pair_ids(pd.read_parquet(src))
+    else:   # blocker cache: attach candidate context measured on the FULL split before subsetting
+        from .global_context import load_cache_with_context
+        p = to_pair_ids(load_cache_with_context(a.split))
     if a.s1_ids:
         keep = set(pd.read_csv(a.s1_ids, dtype=str).s1_id)
         p = p[p.s1_id.isin(keep)].reset_index(drop=True)
