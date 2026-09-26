@@ -96,9 +96,11 @@ def group_predictions_by_s1(
     threshold: float = 0.5,
     s1_col: str = S1_ID_COL,
     target_id_col: str = TARGET_ID_COL,
+    enforce_one_owner: bool = True,
 ) -> Dict[str, Set[str]]:
     """
-    Groups predicted matches by Source 1 entity ID based on a probability decision threshold.
+    Groups predicted matches by Source 1 entity ID based on a probability decision threshold,
+    enforcing the one-owner rule (each S2/S3 record stays under at most one S1).
 
     Args:
         df: DataFrame containing predictions with s1_col, target_id_col, and probability_col.
@@ -106,6 +108,7 @@ def group_predictions_by_s1(
         threshold: Minimum probability required to count as a match.
         s1_col: Source 1 entity ID column name.
         target_id_col: Target candidate ID column name.
+        enforce_one_owner: Whether to assign each target record only to its highest-probability S1.
 
     Returns:
         Dict mapping source1_entity_id -> set of predicted matching target IDs.
@@ -117,6 +120,11 @@ def group_predictions_by_s1(
 
     # Filter rows satisfying decision threshold
     matched_df = df[df[probability_col] >= threshold]
+
+    # Enforce One-Owner Rule (each target entity belongs to at most one S1 entity)
+    if enforce_one_owner and not matched_df.empty and target_id_col in matched_df.columns:
+        best_p = matched_df.groupby(target_id_col)[probability_col].transform("max")
+        matched_df = matched_df[matched_df[probability_col] == best_p].drop_duplicates(target_id_col)
 
     for s1_id, group in matched_df.groupby(s1_col):
         grouped_preds[str(s1_id)] = set(group[target_id_col].astype(str).tolist())

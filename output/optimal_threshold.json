@@ -1,9 +1,9 @@
 {
   "best_threshold": 0.9,
-  "best_macro_f05": 0.987169362079744,
+  "best_macro_f05": 0.9871693620797442,
   "threshold_grid_results": {
     "0.05": {
-      "macro_f05": 0.9736288871119835,
+      "macro_f05": 0.9736288871119834,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9682217714672076,
@@ -13,7 +13,7 @@
       "total_fn": 3
     },
     "0.06": {
-      "macro_f05": 0.9768903813648571,
+      "macro_f05": 0.976890381364857,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9701897018970189,
@@ -23,7 +23,7 @@
       "total_fn": 3
     },
     "0.07": {
-      "macro_f05": 0.9782406319914236,
+      "macro_f05": 0.9782406319914233,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9721656483367278,
@@ -33,7 +33,7 @@
       "total_fn": 3
     },
     "0.08": {
-      "macro_f05": 0.9786572986580901,
+      "macro_f05": 0.97865729865809,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9728260869565217,
@@ -43,7 +43,7 @@
       "total_fn": 3
     },
     "0.09": {
-      "macro_f05": 0.9785611448119362,
+      "macro_f05": 0.9785611448119361,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.972807613868117,
@@ -73,7 +73,7 @@
       "total_fn": 4
     },
     "0.12": {
-      "macro_f05": 0.9800354151172599,
+      "macro_f05": 0.9800354151172597,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9754601226993865,
@@ -103,7 +103,7 @@
       "total_fn": 5
     },
     "0.15": {
-      "macro_f05": 0.9805424813794249,
+      "macro_f05": 0.9805424813794248,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.976775956284153,
@@ -113,7 +113,7 @@
       "total_fn": 5
     },
     "0.16": {
-      "macro_f05": 0.9812567670937107,
+      "macro_f05": 0.9812567670937105,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9774436090225563,
@@ -293,7 +293,7 @@
       "total_fn": 6
     },
     "0.34": {
-      "macro_f05": 0.982558072412711,
+      "macro_f05": 0.9825580724127109,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9807692307692307,
@@ -303,7 +303,7 @@
       "total_fn": 7
     },
     "0.35": {
-      "macro_f05": 0.982558072412711,
+      "macro_f05": 0.9825580724127109,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9807692307692307,
@@ -353,7 +353,7 @@
       "total_fn": 8
     },
     "0.4": {
-      "macro_f05": 0.9833526983234359,
+      "macro_f05": 0.983352698323436,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9827705031013094,
@@ -713,7 +713,7 @@
       "total_fn": 14
     },
     "0.76": {
-      "macro_f05": 0.9834991669779474,
+      "macro_f05": 0.9834991669779476,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9847328244274809,
@@ -773,7 +773,7 @@
       "total_fn": 19
     },
     "0.82": {
-      "macro_f05": 0.9848107727936292,
+      "macro_f05": 0.9848107727936294,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9874476987447699,
@@ -783,7 +783,7 @@
       "total_fn": 19
     },
     "0.83": {
-      "macro_f05": 0.9851808385831029,
+      "macro_f05": 0.985180838583103,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9881284916201117,
@@ -793,7 +793,7 @@
       "total_fn": 20
     },
     "0.84": {
-      "macro_f05": 0.985084684736949,
+      "macro_f05": 0.9850846847369492,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9881201956673655,
@@ -803,7 +803,7 @@
       "total_fn": 21
     },
     "0.85": {
-      "macro_f05": 0.985084684736949,
+      "macro_f05": 0.9850846847369492,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9881201956673655,
@@ -813,7 +813,7 @@
       "total_fn": 21
     },
     "0.86": {
-      "macro_f05": 0.984776766848386,
+      "macro_f05": 0.9847767668483861,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9881035689293212,
@@ -823,7 +823,7 @@
       "total_fn": 23
     },
     "0.87": {
-      "macro_f05": 0.9860664493880685,
+      "macro_f05": 0.9860664493880686,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9894736842105263,
@@ -853,7 +853,7 @@
       "total_fn": 28
     },
     "0.9": {
-      "macro_f05": 0.987169362079744,
+      "macro_f05": 0.9871693620797442,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9915373765867419,
@@ -863,7 +863,7 @@
       "total_fn": 29
     },
     "0.91": {
-      "macro_f05": 0.9867423965721334,
+      "macro_f05": 0.9867423965721335,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9915194346289753,
@@ -903,7 +903,7 @@
       "total_fn": 43
     },
     "0.95": {
-      "macro_f05": 0.9843444616104675,
+      "macro_f05": 0.9843444616104676,
       "total_entities": 400,
       "singleton_entities": 17,
       "precision_micro": 0.9949712643678161,

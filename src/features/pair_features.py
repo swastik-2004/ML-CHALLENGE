@@ -191,18 +191,21 @@ def compute_features(pairs: pd.DataFrame, rec: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_context_features(df: pd.DataFrame,
-                         score_cols=("name_token_set", "addr_token_set")) -> pd.DataFrame:
+                         score_cols=("name_token_set", "addr_token_set", "name_ratio")) -> pd.DataFrame:
     """Per-S1 and per-candidate context. Only meaningful on REAL blocker output: the candidate
     distribution at train time must match test time, so compute on both the same way."""
     df = df.copy()
     df["n_cands"] = df.groupby("s1_id", sort=False)["cand_id"].transform("size").astype(F32)
     for c in score_cols:
-        s = df[c].fillna(-1.0)
-        g = s.groupby(df["s1_id"], sort=False)
-        df[f"{c}_rank"] = g.rank(ascending=False, method="min").astype(F32)
-        df[f"{c}_gap"] = (g.transform("max") - s).astype(F32)
-    q = df[list(score_cols)].fillna(0.0).mean(axis=1)
-    df["cand_n_s1"] = df.groupby("cand_id", sort=False)["s1_id"].transform("size").astype(F32)
+        if c in df.columns:
+            s = df[c].fillna(-1.0)
+            g = s.groupby(df["s1_id"], sort=False)
+            df[f"{c}_rank"] = g.rank(ascending=False, method="min").astype(F32)
+            df[f"{c}_gap"] = (g.transform("max") - s).astype(F32)
+    present_scores = [c for c in score_cols if c in df.columns]
+    q = df[present_scores].fillna(0.0).mean(axis=1) if present_scores else pd.Series(0.0, index=df.index)
+    n_s1_total = max(1, df["s1_id"].nunique())
+    df["cand_n_s1"] = (df.groupby("cand_id", sort=False)["s1_id"].transform("size") / n_s1_total).astype(F32)
     df["cand_rank_for_target"] = q.groupby(df["cand_id"], sort=False).rank(
         ascending=False, method="min").astype(F32)
     return df

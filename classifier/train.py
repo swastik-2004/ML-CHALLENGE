@@ -37,7 +37,11 @@ logger = setup_logger(__name__)
 
 
 def build_ground_truth_dict(
-    df: pd.DataFrame, s1_col: str = S1_ID_COL, target_id_col: str = TARGET_ID_COL, label_col: str = LABEL_COL
+    df: pd.DataFrame,
+    s1_col: str = S1_ID_COL,
+    target_id_col: str = TARGET_ID_COL,
+    label_col: str = LABEL_COL,
+    all_s1_ids: Optional[Set[str]] = None,
 ) -> Dict[str, Set[str]]:
     """
     Constructs a ground truth dictionary (s1_id -> set of true matching target IDs) from labeled data.
@@ -47,14 +51,19 @@ def build_ground_truth_dict(
         s1_col: S1 entity ID column.
         target_id_col: Target candidate ID column.
         label_col: Binary label column (1 = match, 0 = non-match).
+        all_s1_ids: Optional complete set of S1 entity IDs in the validation split (including those with 0 candidates).
 
     Returns:
         Dict mapping source1_entity_id -> set of true matching target IDs.
     """
     gt_dict: Dict[str, Set[str]] = {}
 
+    s1_universe = set(df[s1_col].unique())
+    if all_s1_ids:
+        s1_universe = s1_universe | set(all_s1_ids)
+
     # Initialize all S1 entities with empty sets
-    for s1_id in df[s1_col].unique():
+    for s1_id in s1_universe:
         gt_dict[str(s1_id)] = set()
 
     # Filter true matches

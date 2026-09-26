@@ -40,6 +40,7 @@ def predict(
     threshold_path: Optional[Union[str, Path]] = None,
     threshold_override: Optional[float] = None,
     output_path: Optional[Union[str, Path]] = None,
+    enforce_one_owner: bool = True,
 ) -> pd.DataFrame:
     """
     Executes prediction pipeline over input candidate pairwise features.
@@ -50,6 +51,7 @@ def predict(
         threshold_path: Optional threshold artifact path. Defaults to config.THRESHOLD_ARTIFACT_PATH.
         threshold_override: Optional explicit probability threshold float.
         output_path: Optional destination TSV file path (`matching_results.tsv`).
+        enforce_one_owner: Whether to assign each candidate target to at most one S1 entity.
 
     Returns:
         DataFrame containing candidate scores with columns:
@@ -99,9 +101,14 @@ def predict(
     results_df["prediction"] = binary_preds
 
     # 6. Format and Save Official Submissions (matching_results.tsv)
-    logger.info(f"[Step 5/5] Grouping predictions and writing output to: {out_path}")
+    logger.info(f"[Step 5/5] Grouping predictions (one_owner={enforce_one_owner}) and writing output to: {out_path}")
     grouped_preds = group_predictions_by_s1(
-        results_df, probability_col="probability", threshold=threshold, s1_col=S1_ID_COL, target_id_col=TARGET_ID_COL
+        results_df,
+        probability_col="probability",
+        threshold=threshold,
+        s1_col=S1_ID_COL,
+        target_id_col=TARGET_ID_COL,
+        enforce_one_owner=enforce_one_owner,
     )
 
     save_predictions_tsv(grouped_preds, out_path, s1_id_col=S1_ID_COL)
