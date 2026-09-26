@@ -1,21 +1,24 @@
 """
 Production Multi-Pass Candidate Blocker for Entity Resolution.
 
-Prunes the O(N*M) search space (~2.2M S1 x ~10.3M Target records) down to a
-compact, high-recall candidate pool (recall >= 87%, capped at 50 candidates/entity).
+Prunes the O(N*M) search space (~2.2M S1 x ~10.3M target records in train) to a compact,
+high-recall candidate pool. Measured on the 100k dev S1s (python -m src.blocking.check_recall):
+94.3% of true pairs kept at cap 20 (18.7 candidates/S1), perfect-classifier macro F0.5 ceiling
+0.98 (was 84.1% / 0.925 with the previous 13-rule blocker).
 
-Features:
-- 13 complementary indexing passes across canonical keys, name stems, street tokens, and house numbers
-- Dynamic anti-crowding filters (MAX_S1, MAX_TG) to eliminate generic explosion
-- Prioritized candidate ranking based on rule agreement and specificity
-- Strict per-entity capping (default: max 50 candidates)
-- Fast vectorized numpy operations
-- Atomic caching to parquet and TSV output meeting competition validator specs
+- 15 same-country key rules (RULES): exact name/address keys, name tokens, house-number combos,
+  rare address tokens, name prefix + state
+- crowded keys are narrowed by extra discriminators (state, rare address token, soundex, prefix)
+  instead of being dropped
+- candidates are ranked by name/address similarity, key specificity and rule agreement before the
+  per-S1 cap; the cache stores the rank so smaller caps are simple filters
+- atomic parquet cache + competition-format candidate_pairs.tsv
 """
 import argparse
 import csv
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -24,6 +27,7 @@ import pandas as pd
 
 from ..config import (
     CANDIDATE_PAIRS_FILE,
+    DEV_IDS_FILE,
     OUTPUT_DIR,
     PROJECT_ROOT,
     WORK_DIR,
@@ -96,6 +100,99 @@ def extract_street_w1(series: pd.Series) -> np.ndarray:
     return street_arr
 
 
+def _map_unique(values, fn) -> np.ndarray:
+    """Apply a python fn once per distinct value (names/addresses repeat a lot)."""
+    codes, uniq = pd.factorize(pd.Series(values, dtype=object).fillna(""))
+    mapped = np.array([fn(u) for u in uniq], dtype=object)
+    return mapped[codes] if len(mapped) else np.array([], dtype=object)
+
+
+_SOUNDEX = {**dict.fromkeys("bfpv", "1"), **dict.fromkeys("cgjkqsxz", "2"), **dict.fromkeys("dt", "3"),
+            "l": "4", **dict.fromkeys("mn", "5"), "r": "6"}
+
+
+def soundex(word: str) -> str:
+    """American Soundex (4 chars). Catches transliteration variants: 'shiva' ~ 'siv' ~ 'shiv'."""
+    w = "".join(ch for ch in str(word).lower() if "a" <= ch <= "z")
+    if not w:
+        return ""
+    out, prev = w[0], _SOUNDEX.get(w[0], "")
+    for ch in w[1:]:
+        d = _SOUNDEX.get(ch, "")
+        if d and d != prev:
+            out += d
+        if ch not in "hw":
+            prev = d
+    return (out + "000")[:4]
+
+
+def rare_address_tokens(addr: np.ndarray, min_len: int = 4) -> Tuple[np.ndarray, np.ndarray]:
+    """(rarest token, 'two rarest tokens') of each address, by document frequency over `addr`.
+
+    Only tokens that occur in >= 2 addresses qualify (a token seen once can never match anything),
+    and numbers / generic street words are skipped. Distinctive place tokens ('glitterati',
+    'makhmalabad', 'creekedge') survive name transliteration noise, so they catch pairs whose
+    names share no key at all."""
+    def toks(a):
+        return {t for t in a.split() if len(t) >= min_len and not t.isdigit() and t not in NOISE_ADDR}
+
+    codes, uniq = pd.factorize(pd.Series(addr, dtype=object).fillna(""))
+    counts = np.bincount(codes, minlength=len(uniq))           # how many records share each address
+    df = Counter()
+    for u, c in zip(uniq, counts):
+        for t in toks(u):
+            df[t] += int(c)
+
+    def pick(u):
+        ts = sorted((t for t in toks(u) if df[t] >= 2), key=lambda t: (df[t], t))
+        return (ts[0] if ts else "", " ".join(sorted(ts[:2])) if len(ts) >= 2 else "")
+
+    picked = [pick(u) for u in uniq]
+    r1 = np.array([a for a, _ in picked], dtype=object)[codes]
+    r2 = np.array([b for _, b in picked], dtype=object)[codes]
+    return r1, r2
+
+
+def _combine(*arrays) -> np.ndarray:
+    """'a|b|c' per row, '' when any part is empty."""
+    out = np.asarray(arrays[0], dtype=object)
+    ok = out != ""
+    for a in arrays[1:]:
+        a = np.asarray(a, dtype=object)
+        ok &= a != ""
+        out = out + "|" + a
+    return np.where(ok, out, "").astype(object)
+
+
+def _match_keys(key: np.ndarray, n1: int, max_s1: int, max_tg: int):
+    """Join S1 rows (key[:n1]) with target rows (key[n1:]) on equal key >= 0, keeping only keys with
+    1..max_s1 S1 rows and 1..max_tg target rows. Returns (s1, tg, blk, crowded_key_mask)."""
+    ka, kb = key[:n1], key[n1:]
+    nk = int(key.max()) + 1 if len(key) and key.max() >= 0 else 0
+    if nk == 0:
+        e = np.array([], dtype=np.int32)
+        return e, e, e, np.zeros(0, bool)
+    ca = np.bincount(ka[ka >= 0], minlength=nk)
+    cb = np.bincount(kb[kb >= 0], minlength=nk)
+    ok = (ca >= 1) & (ca <= max_s1) & (cb >= 1) & (cb <= max_tg)
+    crowded = (ca >= 1) & (cb >= 1) & ~ok
+
+    ia = np.flatnonzero((ka >= 0) & ok[np.maximum(ka, 0)])
+    ib = np.flatnonzero((kb >= 0) & ok[np.maximum(kb, 0)])
+    ka_valid, kb_valid = ka[ia], kb[ib]
+    order_b = np.argsort(kb_valid, kind="stable")
+    kb_sorted, ib_sorted = kb_valid[order_b], ib[order_b]
+    b_starts = np.searchsorted(kb_sorted, ka_valid, side="left")
+    counts = np.searchsorted(kb_sorted, ka_valid, side="right") - b_starts
+    m = counts > 0
+    ia_v, cnt_v, st_v = ia[m], counts[m], b_starts[m]
+    s1_res = np.repeat(ia_v.astype(np.int32), cnt_v)
+    offsets = np.repeat(st_v, cnt_v) + (np.arange(len(s1_res)) - np.repeat(np.cumsum(cnt_v) - cnt_v, cnt_v))
+    tg_res = ib_sorted[offsets].astype(np.int32)
+    blk = np.repeat(cb[ka_valid[m]].astype(np.int32), cnt_v)   # targets sharing the key: specificity
+    return s1_res, tg_res, blk, crowded
+
+
 def index_rule(
     s1_vals: np.ndarray,
     tg_vals: np.ndarray,
@@ -103,13 +200,24 @@ def index_rule(
     n1: int,
     max_s1: int = 20,
     max_tg: int = 50,
-    min_len: int = 0
+    min_len: int = 0,
+    narrow: Optional[List[Tuple[np.ndarray, np.ndarray]]] = None,
 ) -> pd.DataFrame:
     """
     Vectorized rule matching within country.
     Filters out empty keys and keys exceeding crowding limits.
+
+    narrow: optional discriminators [(s1_disc, tg_disc), ...]. Instead of dropping a crowded key
+    (too many S1 or target rows share it), its rows are re-keyed on (key, discriminator) and matched
+    again under the same limits; keys still crowded move on to the next discriminator. Rows with an
+    empty discriminator drop out. Example: first word 'sharma' is far too common on its own, but
+    'sharma' + rare address token 'makhmalabad' is specific.
+
+    Returns columns s1, tg (row positions) and blk (number of target rows sharing the matched key;
+    small = specific evidence, used to rank candidates before the cap).
     """
-    both_col = pd.concat([pd.Series(s1_vals), pd.Series(tg_vals)], ignore_index=True)
+    both_col = pd.concat([pd.Series(s1_vals, dtype=object), pd.Series(tg_vals, dtype=object)],
+                         ignore_index=True).fillna("")
     kc, _ = pd.factorize(both_col)
     n_countries = int(both_country_codes.max()) + 1
     key = kc.astype(np.int64) * n_countries + both_country_codes
@@ -121,217 +229,247 @@ def index_rule(
     key[mask] = -1
     del both_col, kc
 
-    ka, kb = key[:n1], key[n1:]
-    nk = int(key.max()) + 1
-    ca = np.bincount(ka[ka >= 0], minlength=nk)
-    cb = np.bincount(kb[kb >= 0], minlength=nk)
+    s1_parts, tg_parts, blk_parts = [], [], []
+    s, t, b, crowded = _match_keys(key, n1, max_s1, max_tg)
+    s1_parts.append(s); tg_parts.append(t); blk_parts.append(b)
 
-    ok = (ca >= 1) & (ca <= max_s1) & (cb >= 1) & (cb <= max_tg)
-    ia = np.flatnonzero((ka >= 0) & ok[np.maximum(ka, 0)])
-    ib = np.flatnonzero((kb >= 0) & ok[np.maximum(kb, 0)])
-    ka_valid = ka[ia]
-    kb_valid = kb[ib]
+    for disc_s1, disc_tg in (narrow or []):
+        rows = (key >= 0) & crowded[np.maximum(key, 0)] if len(crowded) else np.zeros(len(key), bool)
+        if not rows.any():
+            break
+        disc = pd.concat([pd.Series(disc_s1, dtype=object), pd.Series(disc_tg, dtype=object)],
+                         ignore_index=True).fillna("").values
+        dc, _ = pd.factorize(disc)
+        rows &= disc != ""
+        combo = np.where(rows, key * (int(dc.max()) + 2) + dc, -1)
+        new_key, _ = pd.factorize(combo)
+        new_key = new_key.astype(np.int64)
+        new_key[~rows] = -1
+        key = new_key
+        s, t, b, crowded = _match_keys(key, n1, max_s1, max_tg)
+        s1_parts.append(s); tg_parts.append(t); blk_parts.append(b)
 
-    order_b = np.argsort(kb_valid)
-    kb_sorted = kb_valid[order_b]
-    ib_sorted = ib[order_b]
+    return pd.DataFrame({"s1": np.concatenate(s1_parts), "tg": np.concatenate(tg_parts),
+                         "blk": np.concatenate(blk_parts)})
 
-    b_starts = np.searchsorted(kb_sorted, ka_valid, side="left")
-    b_ends = np.searchsorted(kb_sorted, ka_valid, side="right")
-    counts = b_ends - b_starts
 
-    valid_mask = counts > 0
-    if not np.any(valid_mask):
-        return pd.DataFrame({"s1": np.array([], dtype=np.int32), "tg": np.array([], dtype=np.int32)})
+# ----------------------------------------------------------------------------------------------
+# Rule table. (name, key column, max_s1, max_tg, min_len, priority, narrow-by columns)
+# priority: 1 = strongest evidence. narrow: discriminator columns tried in order for crowded keys.
+# Key columns are derived in MultiPassBlocker._derive_keys.
+# ----------------------------------------------------------------------------------------------
+RULES = [
+    ("R1_name_key",       "name_key",     20, 50, 0, 1, ["state", "ra1"]),
+    ("R2_name_compact",   "name_compact", 20, 50, 0, 1, ["state", "ra1"]),
+    ("R3_addr_key",       "addr_key",     20, 50, 0, 1, []),
+    ("R4_name_stem",      "name_stem",    20, 50, 4, 1, ["state", "ra1"]),
+    ("R5_house_w1",       "house_w1",     20, 50, 4, 2, []),
+    ("R6_house_p3",       "house_p3",     20, 50, 4, 2, []),
+    ("R7_house_p2",       "house_p2",     15, 30, 3, 2, []),
+    ("R8_house_street",   "house_street", 15, 30, 4, 2, []),
+    ("R9_w1_w2",          "w1_w2",        15, 35, 5, 2, ["state", "ra1"]),
+    ("R11_house_w2",      "house_w2",     15, 30, 4, 3, []),
+    ("R12_w1_name",       "w1",           15, 30, 3, 3, ["state", "ra1"]),
+    ("R13_house_state",   "house_state",  10, 20, 4, 4, []),
+    # R10 (state + first word) and R16 (soundex + state) were measured on the dev set and removed:
+    # 24 and 11 true pairs no other rule finds, for ~0.7M extra candidates each.
+    # new rules for pairs no key above can match (transliterated names, typos)
+    ("R14_rare_addr2",    "ra2",          20, 50, 0, 2, ["sx"]),
+    ("R15_rare_addr",     "ra1",          20, 50, 0, 3, ["sx", "p4"]),
+    ("R17_p4_state",      "p4_state",     20, 50, 0, 4, ["ra1"]),
+]
 
-    ia_valid = ia[valid_mask]
-    counts_valid = counts[valid_mask]
-    starts_valid = b_starts[valid_mask]
 
-    s1_res = np.repeat(ia_valid.astype(np.int32), counts_valid)
-    offsets = np.repeat(starts_valid, counts_valid) + (np.arange(len(s1_res)) - np.repeat(np.cumsum(counts_valid) - counts_valid, counts_valid))
-    tg_res = ib_sorted[offsets].astype(np.int32)
+def rank_score(g: pd.DataFrame) -> np.ndarray:
+    """Higher = keep first when the cap cuts an S1's candidate list:
+    name + address similarity (0-100 each) + key specificity + rule agreement.
 
-    return pd.DataFrame({"s1": s1_res, "tg": tg_res})
+    Tuned on the uncapped dev pairs (src.blocking.check_recall / precap_dev_train.parquet): at cap 20
+    this keeps 94.3% of true pairs vs 91.3% for the old order (rule priority, then n_rules), with
+    the same number of candidates. Strict rule priority is deliberately not used: a crowded
+    exact-name match is weaker evidence than a unique rare-address match with a similar name."""
+    spec = 1.0 / np.log2(2.0 + g["min_blk"].values)          # 1 for a unique key, -> 0 when crowded
+    return (g["name_sim"].values.astype(np.float64) + g["addr_sim"].values
+            + 250.0 * spec + 15.0 * g["n_rules"].values)
+
+
+SIM_CHUNK = 2_000_000   # pairs per rapidfuzz cpdist call
+
+
+def precap_dev_path(split: str) -> Path:
+    return CACHE_DIR / f"precap_dev_{split}.parquet"
 
 
 class MultiPassBlocker:
     """
-    Multi-Pass Entity Resolution Blocker with 13 complementary passes.
-    Executes multiple indexing passes and applies prioritized capping.
+    Multi-pass entity resolution blocker.
+
+    1. Every rule in RULES joins S1 and target records on an equal key within the same country.
+       Crowded keys are narrowed by extra discriminators instead of being dropped.
+    2. Pairs from all rules are merged: n_rules (how many rules agree), best_priority, rules_mask
+       (which rules), min_blk (size of the most specific matching block).
+    3. Candidates of S1s with more than `sim_min` pairs (default 20, the smallest cap we use: below
+       it every candidate is kept whatever the order) get a quick name + address similarity
+       (rapidfuzz token_set_ratio), and every S1's candidates are ranked by rank_score (similarity,
+       key specificity, rule agreement), then capped at `max_candidates`.
+    4. The cache keeps the rank, so smaller caps are `rank < cap` filters; on the train split the
+       uncapped pairs of the dev S1s are also saved for src.blocking.check_recall.
     """
 
-    def __init__(self, max_candidates_per_entity: int = 20):
+    def __init__(self, max_candidates_per_entity: int = 20, sim_min: int = 20):
         self.max_candidates = max_candidates_per_entity
+        self.sim_min = sim_min
+
+    @staticmethod
+    def _derive_keys(d: pd.DataFrame) -> pd.DataFrame:
+        d["w1"], d["w2"], d["p3"] = extract_blocking_tokens(d["name_core"])
+        d["p2"] = d["name_norm"].str.slice(0, 2)
+        d["name_stem"] = extract_name_stem(d["name_core"])
+        d["street_w1"] = extract_street_w1(d["addr_norm"])
+        d["sx"] = _map_unique(d["w1"].values, soundex)
+        d["p4"] = d["name_core"].str.replace(" ", "", regex=False).str.slice(0, 4).values
+        h, st = d["house_no"].values, d["state"].values
+        d["house_p3"] = _combine(h, d["p3"].values)
+        d["house_p2"] = _combine(h, d["p2"].values)
+        d["house_w1"] = _combine(h, d["w1"].values)
+        d["house_w2"] = _combine(h, d["w2"].values)
+        d["house_street"] = _combine(h, d["street_w1"].values)
+        d["house_state"] = _combine(h, st)
+        d["w1_w2"] = _combine(d["w1"].values, d["w2"].values)
+        d["p4_state"] = _combine(d["p4"].values, st)
+        return d
 
     def build_candidates(self, split: str = "test") -> Path:
         """
-        Execute 13-pass blocking for split ('train' or 'test').
+        Execute multi-pass blocking for split ('train' or 'test').
         Returns path to the generated parquet cache file.
         """
+        import gc
+        from rapidfuzz import fuzz
+        from rapidfuzz.process import cpdist
+
         print(f"\n{'='*75}")
-        print(f"RUNNING 13-PASS BLOCKER ON SPLIT: '{split.upper()}'")
+        print(f"RUNNING {len(RULES)}-PASS BLOCKER ON SPLIT: '{split.upper()}' (cap {self.max_candidates})")
         print(f"{'='*75}")
         t_start = time.time()
 
-        cols = [
-            "entity_id", "country", "name_norm", "name_core", "name_key",
-            "name_compact", "addr_norm", "addr_key", "house_no", "state"
-        ]
+        cols = ["entity_id", "country", "name_norm", "name_core", "name_key",
+                "name_compact", "addr_norm", "addr_key", "house_no", "state"]
 
-        # 1. Load normalized partitions
+        # 1. Load normalized partitions (S1 rows first, then S2 + S3)
         print("Loading normalized datasets...")
         s1 = pd.read_parquet(norm_path(split, 1), columns=cols)
-        tg2 = pd.read_parquet(norm_path(split, 2), columns=cols)
-        tg3 = pd.read_parquet(norm_path(split, 3), columns=cols)
-        tg = pd.concat([tg2, tg3], ignore_index=True)
-        del tg2, tg3
-
-        n1 = len(s1)
-        ntg = len(tg)
+        tg = pd.concat([pd.read_parquet(norm_path(split, s), columns=cols) for s in (2, 3)],
+                       ignore_index=True)
+        n1, ntg = len(s1), len(tg)
         print(f"Loaded {n1:,} S1 entities and {ntg:,} target records.")
-
         s1_ids = id_to_int(s1.entity_id.values)
         tg_ids = id_to_int(tg.entity_id.values)
+        d = pd.concat([s1, tg], ignore_index=True).fillna("")
+        del s1, tg
+        d.drop(columns=["entity_id"], inplace=True)
+        gc.collect()
 
-        # 2. Extract derived tokens
-        print("Deriving blocking tokens (w1, w2, p3, p2, name_stem, street_w1, house_no combinations)...")
-        s1["w1"], s1["w2"], s1["p3"] = extract_blocking_tokens(s1["name_core"])
-        tg["w1"], tg["w2"], tg["p3"] = extract_blocking_tokens(tg["name_core"])
+        # 2. Derived keys (computed once on S1 + targets together)
+        t_k = time.time()
+        print("Deriving blocking keys...")
+        d = self._derive_keys(d)
+        d["ra1"], d["ra2"] = rare_address_tokens(d["addr_norm"].values)
+        cc, _ = pd.factorize(d["country"])
+        print(f"  keys ready ({time.time() - t_k:.0f}s)")
 
-        s1["p2"] = s1["name_norm"].str.slice(0, 2)
-        tg["p2"] = tg["name_norm"].str.slice(0, 2)
-
-        s1["name_stem"] = extract_name_stem(s1["name_core"])
-        tg["name_stem"] = extract_name_stem(tg["name_core"])
-
-        s1["street_w1"] = extract_street_w1(s1["addr_norm"])
-        tg["street_w1"] = extract_street_w1(tg["addr_norm"])
-
-        # Composite keys
-        s1["house_p3"] = np.where((s1["house_no"].values != "") & (s1["p3"].values != ""), s1["house_no"].values + "_" + s1["p3"].values, "")
-        tg["house_p3"] = np.where((tg["house_no"].values != "") & (tg["p3"].values != ""), tg["house_no"].values + "_" + tg["p3"].values, "")
-
-        s1["house_p2"] = np.where((s1["house_no"].values != "") & (s1["p2"].values != ""), s1["house_no"].values + "_" + s1["p2"].values, "")
-        tg["house_p2"] = np.where((tg["house_no"].values != "") & (tg["p2"].values != ""), tg["house_no"].values + "_" + tg["p2"].values, "")
-
-        s1["house_w1"] = np.where((s1["house_no"].values != "") & (s1["w1"].values != ""), s1["house_no"].values + "_" + s1["w1"].values, "")
-        tg["house_w1"] = np.where((tg["house_no"].values != "") & (tg["w1"].values != ""), tg["house_no"].values + "_" + tg["w1"].values, "")
-
-        s1["house_w2"] = np.where((s1["house_no"].values != "") & (s1["w2"].values != ""), s1["house_no"].values + "_" + s1["w2"].values, "")
-        tg["house_w2"] = np.where((tg["house_no"].values != "") & (tg["w2"].values != ""), tg["house_no"].values + "_" + tg["w2"].values, "")
-
-        s1["house_street"] = np.where((s1["house_no"].values != "") & (s1["street_w1"].values != ""), s1["house_no"].values + "_" + s1["street_w1"].values, "")
-        tg["house_street"] = np.where((tg["house_no"].values != "") & (tg["street_w1"].values != ""), tg["house_no"].values + "_" + tg["street_w1"].values, "")
-
-        s1["house_state"] = np.where((s1["house_no"].values != "") & (s1["state"].values != ""), s1["house_no"].values + "_" + s1["state"].values, "")
-        tg["house_state"] = np.where((tg["house_no"].values != "") & (tg["state"].values != ""), tg["house_no"].values + "_" + tg["state"].values, "")
-
-        s1["state_w1"] = np.where((s1["state"].values != "") & (s1["w1"].values != ""), s1["state"].values + "_" + s1["w1"].values, "")
-        tg["state_w1"] = np.where((tg["state"].values != "") & (tg["w1"].values != ""), tg["state"].values + "_" + tg["w1"].values, "")
-
-        s1["w1_w2"] = np.where((s1["w1"].values != "") & (s1["w2"].values != ""), s1["w1"].values + "_" + s1["w2"].values, "")
-        tg["w1_w2"] = np.where((tg["w1"].values != "") & (tg["w2"].values != ""), tg["w1"].values + "_" + tg["w2"].values, "")
-
-        # Country factorization
-        both_country = pd.concat([s1["country"], tg["country"]], ignore_index=True)
-        cc, _ = pd.factorize(both_country)
-        del both_country
-
-        # 3. Define the 13 multi-pass rules
-        rules = [
-            ("R1_name_key", s1["name_key"].values, tg["name_key"].values, 20, 50, 0, 1),
-            ("R2_name_compact", s1["name_compact"].values, tg["name_compact"].values, 20, 50, 0, 1),
-            ("R3_addr_key", s1["addr_key"].values, tg["addr_key"].values, 20, 50, 0, 1),
-            ("R4_name_stem", s1["name_stem"].values, tg["name_stem"].values, 20, 50, 4, 1),
-            ("R5_house_w1", s1["house_w1"].values, tg["house_w1"].values, 20, 50, 4, 2),
-            ("R6_house_p3", s1["house_p3"].values, tg["house_p3"].values, 20, 50, 4, 2),
-            ("R7_house_p2", s1["house_p2"].values, tg["house_p2"].values, 15, 30, 3, 2),
-            ("R8_house_street", s1["house_street"].values, tg["house_street"].values, 15, 30, 4, 2),
-            ("R9_w1_w2", s1["w1_w2"].values, tg["w1_w2"].values, 15, 35, 5, 2),
-            ("R10_state_w1", s1["state_w1"].values, tg["state_w1"].values, 15, 40, 4, 3),
-            ("R11_house_w2", s1["house_w2"].values, tg["house_w2"].values, 15, 30, 4, 3),
-            ("R12_w1_name", s1["w1"].values, tg["w1"].values, 15, 30, 3, 3),
-            ("R13_house_state", s1["house_state"].values, tg["house_state"].values, 10, 20, 4, 4),
-        ]
-
-        pass_dfs = []
-        for r_name, s1_col, tg_col, max_s1, max_tg, min_len, priority in rules:
+        # 3. Run the rules
+        pass_s1, pass_tg, pass_bit, pass_prio, pass_blk = [], [], [], [], []
+        for bit, (r_name, col, max_s1, max_tg, min_len, priority, narrow_cols) in enumerate(RULES):
             t_r = time.time()
-            df = index_rule(s1_col, tg_col, cc, n1, max_s1=max_s1, max_tg=max_tg, min_len=min_len)
-            df["priority"] = np.int8(priority)
-            print(f"  [{r_name:<16}] generated {len(df):>10,d} candidate pairs ({time.time() - t_r:.1f}s)")
-            pass_dfs.append(df)
-
-        del s1, tg, cc
-        import gc
+            v = d[col].values
+            narrow = [(d[c].values[:n1], d[c].values[n1:]) for c in narrow_cols]
+            df = index_rule(v[:n1], v[n1:], cc, n1, max_s1=max_s1, max_tg=max_tg, min_len=min_len,
+                            narrow=narrow)
+            pass_s1.append(df.s1.values); pass_tg.append(df.tg.values); pass_blk.append(df.blk.values)
+            pass_bit.append(np.full(len(df), 1 << bit, dtype=np.int32))
+            pass_prio.append(np.full(len(df), priority, dtype=np.int8))
+            print(f"  [{r_name:<18}] {len(df):>11,d} pairs ({time.time() - t_r:.1f}s)")
+            del df
+        names = d["name_core"].values
+        addrs = d["addr_norm"].values
+        del d
         gc.collect()
 
-        # 4. Aggregate & Deduplicate (Memory-Efficient 64-bit Bit-Packing)
-        print("Aggregating candidate passes and computing agreement weights...")
-        total_pairs = sum(len(df) for df in pass_dfs)
-        if total_pairs == 0:
-            grouped = pd.DataFrame(columns=["s1_int", "tg_int", "n_rules", "best_priority"])
-        else:
-            all_s1 = np.concatenate([df["s1"].values for df in pass_dfs])
-            all_tg = np.concatenate([df["tg"].values for df in pass_dfs])
-            all_prio = np.concatenate([df["priority"].values for df in pass_dfs])
-            del pass_dfs
-            gc.collect()
+        # 4. Merge passes: one row per (s1, tg)
+        print("Merging passes...")
+        all_s1 = np.concatenate(pass_s1); all_tg = np.concatenate(pass_tg)
+        all_bit = np.concatenate(pass_bit); all_prio = np.concatenate(pass_prio)
+        all_blk = np.concatenate(pass_blk)
+        del pass_s1, pass_tg, pass_bit, pass_prio, pass_blk
+        pair_keys = (all_s1.astype(np.uint64) << np.uint64(32)) | all_tg.astype(np.uint64)
+        del all_s1, all_tg
+        order = np.argsort(pair_keys, kind="stable")
+        sk = pair_keys[order]
+        del pair_keys
+        starts = np.flatnonzero(np.r_[True, sk[1:] != sk[:-1]]) if len(sk) else np.array([], np.int64)
+        uk = sk[starts]
+        del sk
+        rules_mask = np.bitwise_or.reduceat(all_bit[order], starts) if len(starts) else np.array([], np.int32)
+        best_prio = np.minimum.reduceat(all_prio[order], starts) if len(starts) else np.array([], np.int8)
+        min_blk = np.minimum.reduceat(all_blk[order], starts) if len(starts) else np.array([], np.int32)
+        del all_bit, all_prio, all_blk, order
+        gc.collect()
+        s1_pos = (uk >> np.uint64(32)).astype(np.int32)
+        tg_pos = (uk & np.uint64(0xFFFFFFFF)).astype(np.int32)
+        del uk
+        g = pd.DataFrame({
+            "s1_int": s1_ids[s1_pos], "tg_int": tg_ids[tg_pos],
+            "n_rules": sum(((rules_mask >> b) & 1) for b in range(len(RULES))).astype(np.int16),
+            "best_priority": best_prio.astype(np.int8), "rules_mask": rules_mask.astype(np.int32),
+            "min_blk": min_blk.astype(np.int32),
+        })
+        print(f"  {len(g):,} unique pairs, {len(g) / max(n1, 1):.1f} per S1 before the cap")
 
-            pair_keys = (all_s1.astype(np.uint64) << np.uint64(32)) | all_tg.astype(np.uint64)
-            del all_s1, all_tg
-            gc.collect()
-
-            order = np.lexsort((all_prio, pair_keys))
-            sorted_keys = pair_keys[order]
-            sorted_prio = all_prio[order]
-            del pair_keys, all_prio, order
-            gc.collect()
-
-            unique_keys, first_idx, counts = np.unique(sorted_keys, return_index=True, return_counts=True)
-            best_prio = sorted_prio[first_idx]
-            del sorted_keys, sorted_prio, first_idx
-            gc.collect()
-
-            s1_arr = (unique_keys >> np.uint64(32)).astype(np.int32)
-            tg_arr = (unique_keys & np.uint64(0xFFFFFFFF)).astype(np.int32)
-            del unique_keys
-
-            s1_int = s1_ids[s1_arr]
-            tg_int = tg_ids[tg_arr]
-            del s1_arr, tg_arr, s1_ids, tg_ids
-
-            grouped = pd.DataFrame({
-                "s1_int": s1_int,
-                "tg_int": tg_int,
-                "n_rules": counts.astype(np.int16),
-                "best_priority": best_prio.astype(np.int8)
-            })
-            del s1_int, tg_int, counts, best_prio
-            gc.collect()
-
-        # Sort within s1 by: 1) best_priority asc, 2) n_rules desc
-        print(f"Sorting and applying prioritized candidate capping (<= {self.max_candidates})...")
-        grouped.sort_values(
-            by=["s1_int", "best_priority", "n_rules"],
-            ascending=[True, True, False],
-            inplace=True
-        )
-
-        # Cap candidates per S1 entity
-        grouped["rank"] = grouped.groupby("s1_int").cumcount()
-        capped = grouped[grouped["rank"] < self.max_candidates][
-            ["s1_int", "tg_int", "n_rules", "best_priority"]
-        ].copy()
-        del grouped
+        # 5. Quick similarity for S1s that have more candidates than sim_min (ranking only matters there)
+        t_s = time.time()
+        per_s1 = np.bincount(s1_pos, minlength=n1)
+        need = per_s1[s1_pos] > self.sim_min
+        g["name_sim"] = np.zeros(len(g), np.uint8)
+        g["addr_sim"] = np.zeros(len(g), np.uint8)
+        if need.any():
+            # chunked: cpdist converts every string of a call up front, so one call over tens of
+            # millions of pairs runs out of memory
+            idx = np.flatnonzero(need)
+            name_sim = np.zeros(len(g), np.uint8)
+            addr_sim = np.zeros(len(g), np.uint8)
+            for lo in range(0, len(idx), SIM_CHUNK):
+                sl = idx[lo:lo + SIM_CHUNK]
+                qi, ci = s1_pos[sl], n1 + tg_pos[sl]
+                name_sim[sl] = cpdist(names[qi], names[ci], scorer=fuzz.token_set_ratio,
+                                      workers=-1, dtype=np.uint8)
+                addr_sim[sl] = cpdist(addrs[qi], addrs[ci], scorer=fuzz.token_set_ratio,
+                                      workers=-1, dtype=np.uint8)
+            g["name_sim"], g["addr_sim"] = name_sim, addr_sim
+            del idx, name_sim, addr_sim
+        print(f"  similarity for {int(need.sum()):,} pairs of S1s with > {self.sim_min} candidates "
+              f"({time.time() - t_s:.0f}s)")
+        del names, addrs, s1_pos, tg_pos, per_s1, need
         gc.collect()
 
-        # 5. Save Parquet Cache
+        # 6. Rank within S1 and keep the diagnostics for the dev S1s (train only)
+        g["score"] = rank_score(g)
+        g.sort_values(["s1_int", "score"], ascending=[True, False], inplace=True, kind="stable")
+        g["rank"] = g.groupby("s1_int", sort=False).cumcount().astype(np.int16)
+        if split == "train" and DEV_IDS_FILE.exists():
+            dev = set(id_to_int(pd.read_csv(DEV_IDS_FILE, dtype=str)["s1_id"].values))
+            save_parquet_atomic(g[g.s1_int.isin(dev)].reset_index(drop=True), precap_dev_path(split))
+            print(f"  saved uncapped dev pairs to {precap_dev_path(split)}")
+
+        # 7. Cap and save
+        capped = g[g["rank"] < self.max_candidates][
+            ["s1_int", "tg_int", "n_rules", "best_priority", "rank"]].reset_index(drop=True)
+        del g
+        gc.collect()
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         cache_path = CACHE_DIR / f"candidate_pairs_{split}.parquet"
         save_parquet_atomic(capped, cache_path)
-        print(f"Saved {len(capped):,d} candidate pairs to cache: {cache_path}")
+        print(f"Saved {len(capped):,d} candidate pairs ({len(capped) / max(n1, 1):.1f} per S1) to {cache_path}")
         print(f"Blocking pipeline completed in {time.time() - t_start:.2f}s")
         return cache_path
 
