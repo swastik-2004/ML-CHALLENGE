@@ -1,0 +1,11 @@
+India validation candidate pairs (15k true, 15k false):
+        name_key_eq  name_token_set  legal_eq
+y norm                                       
+0 new        0.2047          0.6962    0.3697
+  old        0.2026          0.6957    0.2091
+1 new        0.5317          0.8997    0.7217
+  old        0.5250          0.8953    0.5193
+
+pairs where the new normaliser changes either name: 3.1%
+India val S1s 12,052: true pairs 41,658, missed by the blocker 4,106
+missed pairs with identical core name: old 362 -> new 376  (+14 = 0.3% of India misses)

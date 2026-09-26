@@ -61,3 +61,18 @@ if __name__ == "__main__":
     for n, fn in list(globals().items()):
         if n.startswith("test_"):
             fn(); print("PASS", n)
+
+
+def test_garbled_legal_suffixes():
+    from src.preprocessing.normalize import normalize_name as N
+    ref = N("Sai Tech Private Limited")
+    for v in ["sai tech praivet limited", "Sai Tech piraivet limitet", "sai tech praivrr limirrd",
+              "Sai Tech prvate limtid", "sai tech pra li", "SAI TECH PVT LTD"]:
+        r = N(v)
+        assert r["name_core"] == "sai tech", v
+        assert r["legal"] == ref["legal"] == "limited private", v
+    assert N("blue elelpi")["legal"] == N("Blue LLP")["legal"] == "llp"
+    # real words / surnames close to 'private' or 'limited' are kept
+    assert N("Parvati Enterprises")["name_core"] == "parvati enterprises"
+    assert N("Privette Holdings LLC")["name_core"] == "privette holdings"
+    assert N("Pirate Coffee")["name_core"] == "pirate coffee"

@@ -1,0 +1,39 @@
+pairs 562,328 | true in candidates 97,668 | selected 95,167
+missed true pairs (FN) 3,738: rejected p<0.68 3,736, lost to one-owner 2
+wrong matches (FP) 1,237
+
+by country:
+         fn_reject  fn_owner   fp
+country                          
+India         1605         1  642
+US            2131         1  595
+
+rejected true pairs by probability band:
+p
+(0.0, 0.05]    361
+(0.05, 0.2]    707
+(0.2, 0.4]     969
+(0.4, 0.55]    872
+(0.55, 0.7]    827
+
+rejected true pairs where the SAME S1 has other selected matches: 95.3%
+rejected true pairs whose S1 got NOTHING selected (whole entity missed): 4.7%
+rank of the rejected true pair among its S1's candidates (by p): median 4
+
+FP: 9.0% are on S1s with no true candidate at all (singletons or blocker-missed)
+--- #1 per-country, CURRENT 15-rule blocker (cap 20), model trained on 120k S1, 30k val S1 ---
+ALL 0.9545 (ceiling 0.9793, model loses 2.5) | India 0.9322 (ceiling 0.9621, loses 3.0) | US 0.9695 (ceiling 0.9908, loses 2.1)
+--- #2 checks ---
+Sibling-consistency second stage: AUC name 0.506, address 0.554 (p alone 0.644, p+siblings 0.571) -> not built.
+Per-country threshold (chosen on 2/3, scored on 1/3): 0.9544 vs one threshold 0.9544 -> no gain.
+
+--- normaliser fix: garbled legal suffixes (src/preprocessing/normalize.py) ---
+~5% of India names end in transliterated legal words the exact list missed: pra li (7,450 in 722k),
+piraivet limitet (4,411), praivrr limirrd (2,455), elelpi/ailailpi (4,852), private/limited typos (~2,500).
+Fix: exact variants + 'pra li' pair + fuzzy private/limited (<=2 edits, last 3 words, protect list:
+privette, pilate, pirate...). US false hits before protect list: 37 in 1.08M names.
+Effect on India val candidate pairs: exact core-name match true 52.5%->53.2%, false 20.3%->20.5%;
+legal-form agreement true 52%->72% (false 21%->37%). Only 3.1% of pairs change.
+Blocking: of 4,106 India true pairs the blocker misses, only +14 gain an identical core name.
+=> small gain (~+0.05-0.1 India), needs full re-normalise + rebuild: include only in a rebuild that
+   happens anyway. Lead for the blocker: 362/4,106 missed India pairs ALREADY have identical core names.

@@ -1,0 +1,44 @@
+
+=== TRUE pairs the model REJECTED (p 0.3-0.7)
+[India p=0.31] S1: red india | c o sarita 324 sharda enclave dibdiba bilaspur rampur up
+                  S3: red india center | plot 334 c o sarita 324 bilaspur rampur up
+[US p=0.54] S1: h 8 modern housing | 1107 dunstan rd pasadena tx
+                  S3: h 8 modern housing | 
+[US p=0.32] S1: first mountain | 9725 strawberry fields dr amarillo tx
+                  S2: first mountain | 
+[US p=0.55] S1: cambridge classic sui holdings | cambridge ma 1 27 cogswell ave
+                  S2: cambridge classic sui | 27 cogswell ave cambridge ma
+[US p=0.40] S1: rasoft summit biopharmaceuticals | 20 godfrey dr norton ma
+                  S3: rasoft summit services | 
+[India p=0.45] S1: bharat silver investment | casino hotelcasino bldg willington island cochin ernakulam kl
+                  S2: bharat silver investment praivrr limirrd | kl 941 casino hotelcasino bldg willington island cochin ernakulam
+[US p=0.67] S1: tell city county of | 10283 37 tell city in
+                  S3: tell city county of | tell city 70283 37 in
+[India p=0.66] S1: jaora cycles | c o shri nagesh mandir madh island nr madh jetty mumbai mh
+                  S3: jaora services | c o sri nagesh mandir bombay mumbai mharastr
+[India p=0.64] S1: htp real | c 8 lgf ii e of kailash new delhi s delhi dl
+                  S3: htp real | 
+[US p=0.34] S1: addison tri state doubleline | 177 balls park addison ny
+                  S2: addison tri state doubleline | 176 balls park addison ny
+[US p=0.66] S1: guerrero dental associates | 24 alford rd lewisville ar
+                  S3: guerrero dental associates | 348b alford rd lewisville ar
+[US p=0.31] S1: g g r carlyle | mn 625 crane creek ln eagan
+                  S2: zephbelonex | 394 crane creek ln mn eagan
+
+=== WRONG pairs the model ACCEPTED
+[US p=0.93] S1: page bartley do | 1201 redwood dr algonquin il
+                  S3: page bartley cdo | 1201 redwood dr algonquin il
+[US p=0.84] S1: ivenelle boral associates | 1801 lotus dr s205 bend or
+                  S3: ivenellea boral associates | 1801 lotus dr s205 bend or
+[India p=0.81] S1: pioneer impex | 1 fl shri nilanchal priyadarshni layout bangalore bangalore n 56 ka
+                  S3: dr pioneer impex | 2nd fl bengaluru bangalore ka
+[US p=0.93] S1: lyrola hotels | 29 nowell rd melrose ma
+                  S3: lyroyx hotels | 29 nowell rd melrose ma
+[US p=0.70] S1: lorain smith bright texas | 475 dandy brush ln gahanna oh
+                  S3: lorain slaeihth bright tax | 477 dandy brush ln gahanna oh
+[India p=0.76] S1: apex software | 1k bulk land warehousing complex sec kwc panvel raigarh mh mh
+                  S3: dr apex software | office 2044 bima complex kwc mh raigarh
+[US p=0.90] S1: harbor group | 15343 verdin st andover mn
+                  S2: harbor group | 15347 verdin saint andoer mn
+[India p=0.77] S1: supreme services | 42 44 shree niwas 5th fl bandhu gokhale rd mumbai mh
+                  S3: services hedalthcre traders | 42 44 shree niwas 5th fl bandhu gokhale rd mumbai charni rd e mh

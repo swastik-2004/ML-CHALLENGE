@@ -14,6 +14,8 @@ state/legal lists simply add knowledge; unknown countries fall through the gener
 """
 import re
 import unicodedata
+
+from rapidfuzz.distance import Levenshtein
 from typing import Dict
 
 try:
@@ -73,6 +75,19 @@ LEGAL = {
     "cie", "societe", "ste", "association", "ets", "etablissements",
     "gmbh", "ag", "bv", "nv",
 }
+# Garbled / transliterated legal suffixes seen in train (26 Sep scan of 722k India names): the noise
+# generator transliterates Hindi legal words, so exact matching missed ~5% of India names and left
+# "piraivet limitet" / "praivrr limirrd" / "elelpi" / "pra li" inside the core name.
+LEGAL_VARIANTS = {
+    "piraivet": "private", "praivrr": "private", "praivet": "private", "praibhet": "private",
+    "prayvet": "private", "pvt": "private",
+    "limitet": "limited", "limirrd": "limited", "limtid": "limited", "ltd": "limited",
+    "elelpi": "llp", "ailailpi": "llp",
+    "incorporated": "inc", "corporation": "corp", "company": "co",
+}
+LEGAL |= set(LEGAL_VARIANTS)
+# words within 2 edits of "private"/"limited" that are real surnames/words (US scan), never legal
+_LEGAL_PROTECT = {"privette", "privett", "prevatte", "prevatt", "previte", "pilate", "pirate", "primate"}
 DROP_WORDS = {"the", "and"}
 _DOMAIN = re.compile(
     r"^\s*(?:https?://)?(?:www\.)?([a-z0-9][a-z0-9\-]*)\."
@@ -96,6 +111,29 @@ def _ocr_fix(t: str) -> str:
     return "".join(out)
 
 
+def _is_legal(t: str, pos_from_end: int) -> bool:
+    """Exact legal word, or (in the last 3 words) a garbled 'private'/'limited' within 2 edits."""
+    if t in LEGAL:
+        return True
+    if pos_from_end > 2 or len(t) < 5 or t in _LEGAL_PROTECT:
+        return False
+    return (Levenshtein.distance(t, "private", score_cutoff=2) <= 2
+            or Levenshtein.distance(t, "limited", score_cutoff=2) <= 2)
+
+
+def _legal_canon(t: str) -> str:
+    """One spelling per legal form, so 'pvt ltd' and 'piraivet limitet' agree."""
+    if t in LEGAL_VARIANTS:
+        return LEGAL_VARIANTS[t]
+    if t in LEGAL:
+        return t
+    if t in ("pra",):
+        return "private"
+    if t in ("li",):
+        return "limited"
+    return "private" if Levenshtein.distance(t, "private") <= Levenshtein.distance(t, "limited") else "limited"
+
+
 def normalize_name(raw: str) -> Dict[str, object]:
     s = raw or ""
     script = script_of(s)
@@ -107,8 +145,11 @@ def normalize_name(raw: str) -> Dict[str, object]:
         s, is_domain = m.group(1).replace("-", " "), 1
     s = _DOTTED.sub(lambda x: x.group(0).replace(".", ""), s)
     toks = [_ocr_fix(t) for t in base_clean(s).split()]
-    legal = sorted({t for t in toks if t in LEGAL})
-    core = [t for t in toks if t not in LEGAL and t not in DROP_WORDS]
+    is_legal = [_is_legal(t, len(toks) - 1 - i) for i, t in enumerate(toks)]
+    if len(toks) >= 3 and toks[-2:] == ["pra", "li"]:  # Hindi abbreviation pra. li. = pvt ltd
+        is_legal[-2:] = [True, True]
+    legal = sorted({_legal_canon(t) for t, g in zip(toks, is_legal) if g})
+    core = [t for t, g in zip(toks, is_legal) if not g and t not in DROP_WORDS]
     if not core:                                   # name was only legal words: keep something
         core = [t for t in toks if t not in DROP_WORDS] or toks
     compact = "".join(core)

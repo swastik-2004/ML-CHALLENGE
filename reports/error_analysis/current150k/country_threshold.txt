@@ -1,0 +1,5 @@
+one threshold      0.9544  picks [np.float64(0.68), np.float64(0.72)]
+per-country        0.9544  picks [np.float64(0.64), np.float64(0.68), np.float64(0.7), np.float64(0.72)]
+  India: one 0.9318 -> per-country 0.9317
+  US: one 0.9695 -> per-country 0.9696
+best threshold on all val S1s: {'India': np.float64(0.68), 'US': np.float64(0.72)}

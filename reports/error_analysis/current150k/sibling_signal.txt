@@ -1,0 +1,9 @@
+sample 2668 3000
+       p  sib_name  sib_addr  n_sib  n_sib_other_src
+y                                                   
+0  0.387     0.887     0.726  2.907            1.454
+1  0.456     0.888     0.726  2.684            1.584
+AUC of p         for true vs false in this band: 0.644
+AUC of sib_name  for true vs false in this band: 0.506
+AUC of sib_addr  for true vs false in this band: 0.554
+AUC of p + sibling similarity: 0.571
