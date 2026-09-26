@@ -62,7 +62,8 @@ class ClassifierModel:
         self.feature_names_: Optional[list] = None
         self.is_fitted: bool = False
 
-    def fit(self, X: pd.DataFrame, y: Union[pd.Series, np.ndarray]) -> "ClassifierModel":
+    def fit(self, X: pd.DataFrame, y: Union[pd.Series, np.ndarray],
+            X_val: Optional[pd.DataFrame] = None, y_val=None) -> "ClassifierModel":
         """
         Fits the binary classifier model on candidate pair features X and binary labels y.
 
@@ -82,7 +83,14 @@ class ClassifierModel:
         self.model = _get_base_classifier(self.params)
 
         logger.info(f"Training classifier on {len(X):,} candidate pairs and {X.shape[1]} features...")
-        self.model.fit(X, y)
+        if X_val is not None and len(X_val) and type(self.model).__name__ == "LGBMClassifier":
+            import lightgbm as lgb
+            from .config import EARLY_STOPPING_ROUNDS
+            self.model.fit(X, y, eval_set=[(X_val, y_val)], eval_metric="binary_logloss",
+                           callbacks=[lgb.early_stopping(EARLY_STOPPING_ROUNDS, verbose=False)])
+            logger.info(f"Early stopping: best iteration {self.model.best_iteration_}")
+        else:
+            self.model.fit(X, y)
         self.is_fitted = True
         logger.info("Classifier model training complete.")
         return self

@@ -55,23 +55,34 @@ FEATURE_COLUMNS: List[str] = [
     "name_token_set_rank", "name_token_set_gap",
     "addr_token_set_rank", "addr_token_set_gap",
     "name_ratio_rank", "name_ratio_gap",
-    "cand_n_s1", "cand_rank_for_target"
+    "cand_n_s1", "cand_rank_blk",  # measured on the full split (src/features/global_context.py)
+    # v2 (26 Sep): rarity-weighted overlap, damaged-digit numbers, transliteration skeleton.
+    # +0.3 pt macro F0.5 on 30k dev S1s (out-of-fold, full ground truth), see reports/PHASE23_RESULTS.md
+    "addr_idf_jacc", "addr_rare_shared", "addr_idf_max_shared", "name_idf_jacc", "name_rare_shared",
+    "house_in_numbers", "numbers_near_frac", "name_skel_ratio", "name_skel_eq",
 ]
 
 # -----------------------------------------------------------------------------
 # Model Hyperparameters & Training Settings
 # -----------------------------------------------------------------------------
 # Default parameters for LightGBM / Sklearn tabular gradient boosting classifier
+# v2 (26 Sep): bigger trees + early stopping on the validation S1s; subsample_freq=1 so bagging
+# actually runs (LightGBM ignores subsample without it). +0.36 pt on 30k dev S1s vs the old
+# 300 trees / depth 6 / 31 leaves.
 MODEL_PARAMS: Dict[str, Any] = {
-    "n_estimators": 300,
+    "n_estimators": 3000,          # upper bound; early stopping picks the real number (~300-400)
     "learning_rate": 0.05,
-    "max_depth": 6,
-    "num_leaves": 31,
+    "num_leaves": 127,
+    "min_child_samples": 100,
     "subsample": 0.8,
+    "subsample_freq": 1,
     "colsample_bytree": 0.8,
+    "reg_lambda": 1.0,
     "random_state": 42,
     "n_jobs": -1,
+    "verbose": -1,
 }
+EARLY_STOPPING_ROUNDS: int = 50
 
 VALIDATION_SPLIT: float = 0.2
 RANDOM_SEED: int = 42

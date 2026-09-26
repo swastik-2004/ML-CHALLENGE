@@ -129,11 +129,30 @@ def index_rule(
     ok = (ca >= 1) & (ca <= max_s1) & (cb >= 1) & (cb <= max_tg)
     ia = np.flatnonzero((ka >= 0) & ok[np.maximum(ka, 0)])
     ib = np.flatnonzero((kb >= 0) & ok[np.maximum(kb, 0)])
+    ka_valid = ka[ia]
+    kb_valid = kb[ib]
 
-    pairs = pd.DataFrame({"s1": ia, "k": ka[ia]}).merge(
-        pd.DataFrame({"tg": ib, "k": kb[ib]}), on="k"
-    )
-    return pairs[["s1", "tg"]].astype(np.int32)
+    order_b = np.argsort(kb_valid)
+    kb_sorted = kb_valid[order_b]
+    ib_sorted = ib[order_b]
+
+    b_starts = np.searchsorted(kb_sorted, ka_valid, side="left")
+    b_ends = np.searchsorted(kb_sorted, ka_valid, side="right")
+    counts = b_ends - b_starts
+
+    valid_mask = counts > 0
+    if not np.any(valid_mask):
+        return pd.DataFrame({"s1": np.array([], dtype=np.int32), "tg": np.array([], dtype=np.int32)})
+
+    ia_valid = ia[valid_mask]
+    counts_valid = counts[valid_mask]
+    starts_valid = b_starts[valid_mask]
+
+    s1_res = np.repeat(ia_valid.astype(np.int32), counts_valid)
+    offsets = np.repeat(starts_valid, counts_valid) + (np.arange(len(s1_res)) - np.repeat(np.cumsum(counts_valid) - counts_valid, counts_valid))
+    tg_res = ib_sorted[offsets].astype(np.int32)
+
+    return pd.DataFrame({"s1": s1_res, "tg": tg_res})
 
 
 class MultiPassBlocker:
@@ -142,7 +161,7 @@ class MultiPassBlocker:
     Executes multiple indexing passes and applies prioritized capping.
     """
 
-    def __init__(self, max_candidates_per_entity: int = 50):
+    def __init__(self, max_candidates_per_entity: int = 20):
         self.max_candidates = max_candidates_per_entity
 
     def build_candidates(self, split: str = "test") -> Path:
@@ -245,21 +264,52 @@ class MultiPassBlocker:
             pass_dfs.append(df)
 
         del s1, tg, cc
+        import gc
+        gc.collect()
 
-        # 4. Aggregate & Deduplicate
+        # 4. Aggregate & Deduplicate (Memory-Efficient 64-bit Bit-Packing)
         print("Aggregating candidate passes and computing agreement weights...")
-        combined = pd.concat(pass_dfs, ignore_index=True)
-        del pass_dfs
+        total_pairs = sum(len(df) for df in pass_dfs)
+        if total_pairs == 0:
+            grouped = pd.DataFrame(columns=["s1_int", "tg_int", "n_rules", "best_priority"])
+        else:
+            all_s1 = np.concatenate([df["s1"].values for df in pass_dfs])
+            all_tg = np.concatenate([df["tg"].values for df in pass_dfs])
+            all_prio = np.concatenate([df["priority"].values for df in pass_dfs])
+            del pass_dfs
+            gc.collect()
 
-        grouped = combined.groupby(["s1", "tg"], as_index=False, sort=False).agg(
-            n_rules=("priority", "count"),
-            best_priority=("priority", "min")
-        )
-        del combined
+            pair_keys = (all_s1.astype(np.uint64) << np.uint64(32)) | all_tg.astype(np.uint64)
+            del all_s1, all_tg
+            gc.collect()
 
-        grouped["s1_int"] = s1_ids[grouped["s1"].values]
-        grouped["tg_int"] = tg_ids[grouped["tg"].values]
-        del s1_ids, tg_ids
+            order = np.lexsort((all_prio, pair_keys))
+            sorted_keys = pair_keys[order]
+            sorted_prio = all_prio[order]
+            del pair_keys, all_prio, order
+            gc.collect()
+
+            unique_keys, first_idx, counts = np.unique(sorted_keys, return_index=True, return_counts=True)
+            best_prio = sorted_prio[first_idx]
+            del sorted_keys, sorted_prio, first_idx
+            gc.collect()
+
+            s1_arr = (unique_keys >> np.uint64(32)).astype(np.int32)
+            tg_arr = (unique_keys & np.uint64(0xFFFFFFFF)).astype(np.int32)
+            del unique_keys
+
+            s1_int = s1_ids[s1_arr]
+            tg_int = tg_ids[tg_arr]
+            del s1_arr, tg_arr, s1_ids, tg_ids
+
+            grouped = pd.DataFrame({
+                "s1_int": s1_int,
+                "tg_int": tg_int,
+                "n_rules": counts.astype(np.int16),
+                "best_priority": best_prio.astype(np.int8)
+            })
+            del s1_int, tg_int, counts, best_prio
+            gc.collect()
 
         # Sort within s1 by: 1) best_priority asc, 2) n_rules desc
         print(f"Sorting and applying prioritized candidate capping (<= {self.max_candidates})...")
@@ -275,6 +325,7 @@ class MultiPassBlocker:
             ["s1_int", "tg_int", "n_rules", "best_priority"]
         ].copy()
         del grouped
+        gc.collect()
 
         # 5. Save Parquet Cache
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -311,7 +362,10 @@ class MultiPassBlocker:
         candidates_df = pd.read_parquet(cache_path, columns=["s1_int", "tg_int"])
 
         print("Formatting string candidate lists...")
-        grouped = candidates_df.groupby("s1_int")["tg_int"].apply(list).to_dict()
+        from collections import defaultdict
+        grouped = defaultdict(list)
+        for s1_i, tg_i in zip(candidates_df["s1_int"].values, candidates_df["tg_int"].values):
+            grouped[s1_i].append(tg_i)
         del candidates_df
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -347,7 +401,7 @@ def generate_candidate_pairs(
 def main():
     parser = argparse.ArgumentParser(description="Multi-Pass Candidate Blocker.")
     parser.add_argument("--split", choices=["train", "test"], default="test", help="Dataset split to block.")
-    parser.add_argument("--max-candidates", type=int, default=50, help="Maximum candidates per entity.")
+    parser.add_argument("--max-candidates", type=int, default=20, help="Maximum candidates per entity.")
     parser.add_argument("--output", type=str, default=None, help="Optional output TSV path.")
     parser.add_argument("--skip-tsv", action="store_true", help="Only build parquet cache, skip TSV generation.")
 
